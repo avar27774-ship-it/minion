@@ -55,7 +55,7 @@ router.post('/register/check', (req, res) => {
   if (existing?.password) return res.status(409).json({ error: 'Логин уже занят' });
 
   const bot = getBot();
-  const botUsername = bot?.username || process.env.BOT_USERNAME || 'MinionsMarketBot';
+  const botUsername = bot?.username || process.env.BOT_USERNAME || 'my_cheats_bot';
   res.json({ botUsername });
 });
 
@@ -146,7 +146,7 @@ router.post('/reset/request', (req, res) => {
   if (!username) return res.status(400).json({ error: 'Введите логин' });
 
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.toLowerCase());
-  const botUsername = getBot()?.username || process.env.BOT_USERNAME || 'MinionsMarketBot';
+  const botUsername = getBot()?.username || process.env.BOT_USERNAME || 'my_cheats_bot';
 
   if (user && user.telegram_id) {
     const code    = String(Math.floor(100000 + Math.random() * 900000));
