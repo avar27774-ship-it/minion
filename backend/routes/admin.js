@@ -8,10 +8,16 @@ const { sanitizeUser } = require('./auth');
 // ── POST /admin/login ─────────────────────────────────────────────────────────
 router.post('/login', (req, res) => {
   const { login, password } = req.body;
-  const adminLogin    = process.env.ADMIN_LOGIN    || 'admin';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'changeme123';
+  const adminLogin    = (process.env.ADMIN_LOGIN    || 'admin').trim();
+  const adminPassword = (process.env.ADMIN_PASSWORD || 'changeme123').trim();
 
-  if (login !== adminLogin || password !== adminPassword) {
+  // Trim input to avoid copy-paste spaces
+  const inputLogin    = (login    || '').trim();
+  const inputPassword = (password || '').trim();
+
+  console.log('[Admin login] attempt:', inputLogin, '| env login:', adminLogin, '| match:', inputLogin === adminLogin && inputPassword === adminPassword);
+
+  if (inputLogin !== adminLogin || inputPassword !== adminPassword) {
     return res.status(401).json({ error: 'Неверные данные' });
   }
   const token = generateAdminToken();
@@ -277,6 +283,26 @@ router.get('/transactions', (req, res) => {
 router.post('/users/:id/verify', (req, res) => {
   try {
     db.prepare('UPDATE users SET is_verified = 1 WHERE id = ?').run(req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка' });
+  }
+});
+
+// ── POST /admin/users/:id/make-subadmin ──────────────────────────────────────
+router.post('/users/:id/make-subadmin', (req, res) => {
+  try {
+    db.prepare('UPDATE users SET is_sub_admin = 1 WHERE id = ?').run(req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка' });
+  }
+});
+
+// ── POST /admin/users/:id/remove-subadmin ────────────────────────────────────
+router.post('/users/:id/remove-subadmin', (req, res) => {
+  try {
+    db.prepare('UPDATE users SET is_sub_admin = 0 WHERE id = ?').run(req.params.id);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Ошибка' });
