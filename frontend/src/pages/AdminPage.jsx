@@ -75,6 +75,14 @@ export default function AdminPage() {
     res.ok ? (toast.success('Разблокирован'), loadTab('users')) : toast.error(res.error)
   }
 
+  const makeSubAdmin = async (id, isSubAdmin) => {
+    const endpoint = isSubAdmin ? 'remove-subadmin' : 'make-subadmin'
+    const res = await adminApi.post(`/users/${id}/${endpoint}`, {})
+    res.ok
+      ? (toast.success(isSubAdmin ? 'Права сняты' : 'Назначен помощником'), loadTab('users'))
+      : toast.error(res.error)
+  }
+
   const adjustBalance = async (id) => {
     const amount = window.prompt('Сумма (+/-):', '0')
     const reason = window.prompt('Причина:') || 'Admin'
@@ -237,6 +245,12 @@ export default function AdminPage() {
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                   <button className="btn btn-sm btn-secondary" onClick={() => adjustBalance(u._id||u.id)}>💰</button>
                   {!u.isVerified && <button className="btn btn-sm btn-secondary" onClick={() => verifyUser(u._id||u.id)}>✓</button>}
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    onClick={() => makeSubAdmin(u._id||u.id, u.isSubAdmin)}
+                    title={u.isSubAdmin ? 'Снять права помощника' : 'Назначить помощником'}
+                    style={{ color: u.isSubAdmin ? 'var(--accent)' : 'var(--t3)' }}
+                  >⚡</button>
                   {u.isBanned
                     ? <button className="btn btn-sm btn-secondary" onClick={() => unbanUser(u._id||u.id)}>✅</button>
                     : <button className="btn btn-sm btn-danger" onClick={() => banUser(u._id||u.id)}>🚫</button>
