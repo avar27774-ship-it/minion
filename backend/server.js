@@ -56,12 +56,19 @@ app.get('*', (req, res) => {
   }
 });
 
-// ── Telegram bot (singleton — только один экземпляр) ──────────────────────────
-// Запускаем с задержкой чтобы старый инстанс Railway успел завершиться
+// ── Telegram bot (webhook mode — без polling, без конфликтов 409) ─────────────
+const { getBot, handleUpdate } = require('./utils/bot');
+
+// Роут для приёма апдейтов от Telegram
+app.post('/api/tg-webhook/:token', (req, res) => {
+  res.sendStatus(200);
+  if (req.params.token !== process.env.TELEGRAM_BOT_TOKEN) return;
+  handleUpdate(req.body).catch(e => console.error('[Webhook] error:', e.message));
+});
+
+// Регистрируем webhook при старте
 if (process.env.TELEGRAM_BOT_TOKEN) {
-  setTimeout(() => {
-    require('./utils/bot').getBot();
-  }, 3000);
+  setTimeout(() => getBot(), 2000);
 }
 
 // ── Cron: auto-complete deals after 72h ───────────────────────────────────────
