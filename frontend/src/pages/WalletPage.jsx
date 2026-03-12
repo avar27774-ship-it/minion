@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
+import { Wallet, ArrowDownCircle, ArrowUpCircle, ShoppingCart, Handshake, RotateCcw, Zap, CreditCard, X, DollarSign } from '../components/Icon'
 import { useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
 import toast from 'react-hot-toast'
 
-const TX_ICONS  = { deposit:'↓', withdrawal:'↑', commission:'%', purchase:'🛒', sale:'💸', refund:'↩', adjustment:'⚡' }
+const TX_ICONS  = { deposit:<ArrowDownCircle size={16} strokeWidth={1.75}/>, withdrawal:<ArrowUpCircle size={16} strokeWidth={1.75}/>, commission:<Zap size={16} strokeWidth={1.75}/>, purchase:<ShoppingCart size={16} strokeWidth={1.75}/>, sale:<DollarSign size={16} strokeWidth={1.75}/>, refund:<RotateCcw size={16} strokeWidth={1.75}/>, adjustment:<Zap size={16} strokeWidth={1.75}/> }
 const TX_COLORS = { deposit:'var(--green)', withdrawal:'var(--red)', sale:'var(--green)', refund:'#22d3ee', adjustment:'var(--purple)', purchase:'var(--red)' }
 const TX_PLUS   = new Set(['deposit','sale','refund','adjustment'])
 
