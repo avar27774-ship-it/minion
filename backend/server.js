@@ -61,6 +61,7 @@ app.get('*', (req, res) => {
 const { completeDeal } = require('./routes/deals');
 const { queryAll, run } = require('./models/db');
 
+// Авто-завершение сделок каждые 15 минут
 cron.schedule('*/15 * * * *', async () => {
   try {
     const now     = Math.floor(Date.now() / 1000);
@@ -76,6 +77,7 @@ cron.schedule('*/15 * * * *', async () => {
   } catch (e) { console.error('[Cron] Error:', e.message); }
 });
 
+// Снятие банов и продвижений каждый час
 cron.schedule('0 * * * *', async () => {
   try {
     const now = Math.floor(Date.now() / 1000);
@@ -84,20 +86,40 @@ cron.schedule('0 * * * *', async () => {
   } catch (e) { console.error('[Cron] Error:', e.message); }
 });
 
+// ── Hourly AI Report → Telegram ───────────────────────────────────────────────
+require('./utils/hourlyReport');
+
+// ── AI Admin (модерация / споры / безопасность / поддержка) ───────────────────
+const { init: initAiAdmin } = require('./utils/aiAdmin');
+
 // ── Init DB then start ────────────────────────────────────────────────────────
 const { initSchema } = require('./models/db');
 const PORT = process.env.PORT || 5000;
 
-initSchema().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🚀 Minions Market server on port ${PORT}`);
-    if (!process.env.JWT_SECRET)          console.warn('⚠️  JWT_SECRET not set');
-    if (!process.env.TELEGRAM_BOT_TOKEN)  console.warn('⚠️  TELEGRAM_BOT_TOKEN not set');
-    if (!process.env.ADMIN_PASSWORD)      console.warn('⚠️  ADMIN_PASSWORD not set');
+initSchema()
+  .then(async () => {
+    // Миграция колонок для AI Admin
+    await run(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_moderated    INTEGER DEFAULT 0`).catch(() => {});
+    await run(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_price_advised INTEGER DEFAULT 0`).catch(() => {});
+    await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS ai_reactivated   INTEGER DEFAULT 0`).catch(() => {});
+    console.log('✅ AI Admin миграция выполнена');
+
+    // Запускаем AI Admin после миграции
+    await initAiAdmin().catch(e => console.error('[AI Admin] Init error:', e.message));
+  })
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 Minions Market server on port ${PORT}`);
+      if (!process.env.JWT_SECRET)          console.warn('⚠️  JWT_SECRET not set');
+      if (!process.env.TELEGRAM_BOT_TOKEN)  console.warn('⚠️  TELEGRAM_BOT_TOKEN not set');
+      if (!process.env.ADMIN_PASSWORD)      console.warn('⚠️  ADMIN_PASSWORD not set');
+      if (!process.env.ANTHROPIC_API_KEY)   console.warn('⚠️  ANTHROPIC_API_KEY not set (AI Admin disabled)');
+      if (!process.env.REPORT_CHAT_ID)      console.warn('⚠️  REPORT_CHAT_ID not set (AI Admin disabled)');
+    });
+  })
+  .catch(e => {
+    console.error('❌ DB init failed:', e.message);
+    process.exit(1);
   });
-}).catch(e => {
-  console.error('❌ DB init failed:', e.message);
-  process.exit(1);
-});
 
 module.exports = app;
