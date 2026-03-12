@@ -175,6 +175,23 @@ async function initSchema() {
       created_at         BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
     );
 
+    CREATE TABLE IF NOT EXISTS security_logs (
+      id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      event      TEXT NOT NULL,
+      ip         TEXT,
+      user_id    TEXT,
+      username   TEXT,
+      details    TEXT,
+      created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_security_logs_ip ON security_logs(ip);
+    CREATE INDEX IF NOT EXISTS idx_security_logs_event ON security_logs(event, created_at DESC);
+
+    -- IP в таблице users
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ip TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS register_ip TEXT;
+
     CREATE TABLE IF NOT EXISTS reviews (
       id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       deal_id     TEXT NOT NULL UNIQUE REFERENCES deals(id),
