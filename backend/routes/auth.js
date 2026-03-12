@@ -1,31 +1,31 @@
 const router  = require('express').Router();
 const bcrypt  = require('bcryptjs');
-const db      = require('../models/db');
+const crypto  = require('crypto');
+const { queryOne, queryAll, run } = require('../models/db');
 const { generateToken, auth } = require('../middleware/auth');
 const { getBot } = require('../utils/bot');
 const notify  = require('../utils/notify');
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function sanitizeUser(u) {
   if (!u) return null;
-  const { password, otp_code, otp_expires, otp_used, reset_code, reset_expires, ...safe } = u;
+  const safe = { ...u };
+  delete safe.password; delete safe.otp_code; delete safe.otp_expires;
+  delete safe.otp_used; delete safe.reset_code; delete safe.reset_expires;
   safe._id = safe.id;
-  safe.username     = safe.username;
-  safe.balance      = safe.balance || 0;
-  safe.frozenBalance = safe.frozen_balance || 0;
-  safe.totalSales   = safe.total_sales || 0;
+  safe.balance        = parseFloat(safe.balance) || 0;
+  safe.frozenBalance  = parseFloat(safe.frozen_balance) || 0;
+  safe.totalSales     = safe.total_sales || 0;
   safe.totalPurchases = safe.total_purchases || 0;
-  safe.isAdmin      = !!safe.is_admin;
-  safe.isSubAdmin   = !!safe.is_sub_admin;
-  safe.isBanned     = !!safe.is_banned;
-  safe.isVerified   = !!safe.is_verified;
-  safe.photoUrl     = safe.photo_url;
-  safe.firstName    = safe.first_name;
-  safe.lastName     = safe.last_name;
-  safe.reviewCount  = safe.review_count || 0;
-  safe.totalDeposited = safe.total_deposited || 0;
-  safe.totalWithdrawn = safe.total_withdrawn || 0;
+  safe.isAdmin        = !!safe.is_admin;
+  safe.isSubAdmin     = !!safe.is_sub_admin;
+  safe.isBanned       = !!safe.is_banned;
+  safe.isVerified     = !!safe.is_verified;
+  safe.photoUrl       = safe.photo_url;
+  safe.firstName      = safe.first_name;
+  safe.lastName       = safe.last_name;
+  safe.reviewCount    = safe.review_count || 0;
+  safe.totalDeposited = parseFloat(safe.total_deposited) || 0;
+  safe.totalWithdrawn = parseFloat(safe.total_withdrawn) || 0;
   return safe;
 }
 
@@ -34,29 +34,36 @@ function validateUsername(u) {
 }
 
 // ── POST /auth/register/init ──────────────────────────────────────────────────
-router.post('/register/init', (req, res) => {
-  const { username } = req.body;
-  if (!username || !validateUsername(username)) {
-    return res.status(400).json({ error: 'Недопустимый логин (3-24 символа, только a-z 0-9 _)' });
+router.post('/register/init', async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username || !validateUsername(username)) {
+      return res.status(400).json({ error: 'Недопустимый логин (3-24 символа, только a-z 0-9 _)' });
+    }
+    const existing = await queryOne('SELECT id, password FROM users WHERE username = $1', [username.toLowerCase()]);
+    if (existing?.password) return res.status(409).json({ error: 'Логин уже занят' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка' });
   }
-  // A "taken" user is one that has a password set (fully registered)
-  const existing = db.prepare('SELECT id, password FROM users WHERE username = ?').get(username.toLowerCase());
-  if (existing?.password) return res.status(409).json({ error: 'Логин уже занят' });
-  res.json({ ok: true });
 });
 
 // ── POST /auth/register/check ─────────────────────────────────────────────────
-router.post('/register/check', (req, res) => {
-  const { username } = req.body;
-  if (!username || !validateUsername(username)) {
-    return res.status(400).json({ error: 'Недопустимый логин' });
-  }
-  const existing = db.prepare('SELECT id, password FROM users WHERE username = ?').get(username.toLowerCase());
-  if (existing?.password) return res.status(409).json({ error: 'Логин уже занят' });
+router.post('/register/check', async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username || !validateUsername(username)) {
+      return res.status(400).json({ error: 'Недопустимый логин' });
+    }
+    const existing = await queryOne('SELECT id, password FROM users WHERE username = $1', [username.toLowerCase()]);
+    if (existing?.password) return res.status(409).json({ error: 'Логин уже занят' });
 
-  const bot = getBot();
-  const botUsername = bot?.username || process.env.BOT_USERNAME || 'my_cheats_bot';
-  res.json({ botUsername });
+    const bot = getBot();
+    const botUsername = bot?.username || process.env.BOT_USERNAME || 'my_cheats_bot';
+    res.json({ botUsername });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка' });
+  }
 });
 
 // ── POST /auth/register/verify ────────────────────────────────────────────────
@@ -71,22 +78,21 @@ router.post('/register/verify', async (req, res) => {
     const trimmedCode = code.trim();
     const now = Math.floor(Date.now() / 1000);
 
-    // Check if already fully registered
-    const alreadyDone = db.prepare('SELECT id, password FROM users WHERE username = ?').get(uname);
+    const alreadyDone = await queryOne('SELECT id, password FROM users WHERE username = $1', [uname]);
     if (alreadyDone?.password) return res.status(409).json({ error: 'Логин уже занят' });
 
-    // PRIMARY: find stub user by username + code (bot created it via /code <username>)
-    let stubUser = db.prepare(
-      `SELECT * FROM users WHERE username = ? AND otp_code = ? AND otp_used = 0 AND otp_expires > ?`
-    ).get(uname, trimmedCode, now);
+    // Find stub user by username + code
+    let stubUser = await queryOne(
+      `SELECT * FROM users WHERE username = $1 AND otp_code = $2 AND otp_used = 0 AND otp_expires > $3`,
+      [uname, trimmedCode, now]
+    );
 
-    // FALLBACK: find stub by code only (handles edge case where username was re-created)
+    // Fallback: find by code only
     if (!stubUser) {
-      const byCode = db.prepare(
-        `SELECT * FROM users WHERE otp_code = ? AND otp_used = 0 AND otp_expires > ? AND password IS NULL`
-      ).all(trimmedCode, now);
-
-      // Match by username among results
+      const byCode = await queryAll(
+        `SELECT * FROM users WHERE otp_code = $1 AND otp_used = 0 AND otp_expires > $2 AND password IS NULL`,
+        [trimmedCode, now]
+      );
       stubUser = byCode.find(u => u.username === uname) || null;
     }
 
@@ -97,11 +103,12 @@ router.post('/register/verify', async (req, res) => {
     }
 
     const hash = await bcrypt.hash(password, 12);
-    db.prepare(
-      `UPDATE users SET password = ?, otp_used = 1, otp_code = NULL, otp_expires = NULL, is_verified = 1 WHERE id = ?`
-    ).run(hash, stubUser.id);
+    await run(
+      `UPDATE users SET password = $1, otp_used = 1, otp_code = NULL, otp_expires = NULL, is_verified = 1 WHERE id = $2`,
+      [hash, stubUser.id]
+    );
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(stubUser.id);
+    const user = await queryOne('SELECT * FROM users WHERE id = $1', [stubUser.id]);
     const token = generateToken(user.id);
 
     if (user.telegram_id) notify.notifyRegistered(user).catch(() => {});
@@ -119,7 +126,7 @@ router.post('/login', async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Заполните все поля' });
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.toLowerCase());
+    const user = await queryOne('SELECT * FROM users WHERE username = $1', [username.toLowerCase()]);
     if (!user || !user.password) return res.status(401).json({ error: 'Неверный логин или пароль' });
 
     const ok = await bcrypt.compare(password, user.password);
@@ -130,8 +137,7 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ error: `Аккаунт заблокирован${until}. ${user.ban_reason || ''}` });
     }
 
-    db.prepare('UPDATE users SET last_active = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), user.id);
-
+    await run('UPDATE users SET last_active = $1 WHERE id = $2', [Math.floor(Date.now() / 1000), user.id]);
     const token = generateToken(user.id);
     res.json({ token, user: sanitizeUser(user) });
   } catch (e) {
@@ -141,21 +147,25 @@ router.post('/login', async (req, res) => {
 });
 
 // ── POST /auth/reset/request ──────────────────────────────────────────────────
-router.post('/reset/request', (req, res) => {
-  const { username } = req.body;
-  if (!username) return res.status(400).json({ error: 'Введите логин' });
+router.post('/reset/request', async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ error: 'Введите логин' });
 
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.toLowerCase());
-  const botUsername = getBot()?.username || process.env.BOT_USERNAME || 'my_cheats_bot';
+    const user = await queryOne('SELECT * FROM users WHERE username = $1', [username.toLowerCase()]);
+    const botUsername = getBot()?.username || process.env.BOT_USERNAME || 'my_cheats_bot';
 
-  if (user && user.telegram_id) {
-    const code    = String(Math.floor(100000 + Math.random() * 900000));
-    const expires = Math.floor(Date.now() / 1000) + 15 * 60;
-    db.prepare('UPDATE users SET reset_code = ?, reset_expires = ? WHERE id = ?').run(code, expires, user.id);
-    notify.sendCode(user.telegram_id, code, 'reset').catch(() => {});
+    if (user && user.telegram_id) {
+      const code    = String(Math.floor(100000 + Math.random() * 900000));
+      const expires = Math.floor(Date.now() / 1000) + 15 * 60;
+      await run('UPDATE users SET reset_code = $1, reset_expires = $2 WHERE id = $3', [code, expires, user.id]);
+      notify.sendCode(user.telegram_id, code, 'reset').catch(() => {});
+    }
+
+    res.json({ ok: true, botUsername });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка' });
   }
-
-  res.json({ ok: true, botUsername });
 });
 
 // ── POST /auth/reset/confirm ──────────────────────────────────────────────────
@@ -165,15 +175,14 @@ router.post('/reset/confirm', async (req, res) => {
     if (!username || !code || !newPassword) return res.status(400).json({ error: 'Заполните все поля' });
     if (newPassword.length < 6) return res.status(400).json({ error: 'Пароль минимум 6 символов' });
 
-    const user = db.prepare(
-      `SELECT * FROM users WHERE username = ? AND reset_code = ? AND reset_expires > ?`
-    ).get(username.toLowerCase(), code.trim(), Math.floor(Date.now() / 1000));
-
+    const user = await queryOne(
+      `SELECT * FROM users WHERE username = $1 AND reset_code = $2 AND reset_expires > $3`,
+      [username.toLowerCase(), code.trim(), Math.floor(Date.now() / 1000)]
+    );
     if (!user) return res.status(400).json({ error: 'Неверный или просроченный код' });
 
     const hash = await bcrypt.hash(newPassword, 12);
-    db.prepare('UPDATE users SET password = ?, reset_code = NULL, reset_expires = NULL WHERE id = ?').run(hash, user.id);
-
+    await run('UPDATE users SET password = $1, reset_code = NULL, reset_expires = NULL WHERE id = $2', [hash, user.id]);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Внутренняя ошибка' });
@@ -181,9 +190,13 @@ router.post('/reset/confirm', async (req, res) => {
 });
 
 // ── GET /auth/me ──────────────────────────────────────────────────────────────
-router.get('/me', auth, (req, res) => {
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.userId);
-  res.json({ user: sanitizeUser(user) });
+router.get('/me', auth, async (req, res) => {
+  try {
+    const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.userId]);
+    res.json({ user: sanitizeUser(user) });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка' });
+  }
 });
 
 module.exports = router;
