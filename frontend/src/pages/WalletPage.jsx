@@ -19,7 +19,7 @@ function Modal({ children, onClose }) {
 
 export default function WalletPage() {
   const navigate = useNavigate()
-  const { user, setUser } = useStore()
+  const { user, setUser, refreshUser } = useStore()
   const [txs, setTxs]         = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal]     = useState(null)
@@ -30,6 +30,7 @@ export default function WalletPage() {
 
   useEffect(() => {
     if (!user) { navigate('/auth'); return }
+    refreshUser() // Обновляем баланс при открытии кошелька
     api.get('/wallet/transactions')
       .then(r => setTxs(r.data.transactions || []))
       .catch(() => {})
