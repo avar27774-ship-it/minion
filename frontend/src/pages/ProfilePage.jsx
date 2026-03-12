@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
 import toast from 'react-hot-toast'
 import ProductCard from '../components/ProductCard'
+import RippleGrid from '../components/RippleGrid/RippleGrid'
 import ProfileCard from '../components/ProfileCard/ProfileCard'
 
 class CardBoundary extends Component {
@@ -77,6 +78,10 @@ export default function ProfilePage() {
   const totalPurch  = parseInt(profile.totalPurchases) || parseInt(profile.total_purchases) || 0
   const glowColor   = rating >= 4.5 ? 'rgba(245,200,66,0.55)' : 'rgba(124,106,255,0.55)'
 
+  // Inline SVG паттерны для holographic эффекта на карточке
+  const iconPattern = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Ccircle cx='20' cy='20' r='8' fill='white' opacity='0.6'/%3E%3Ccircle cx='60' cy='20' r='5' fill='white' opacity='0.4'/%3E%3Ccircle cx='40' cy='50' r='10' fill='white' opacity='0.7'/%3E%3Ccircle cx='10' cy='60' r='4' fill='white' opacity='0.3'/%3E%3Ccircle cx='70' cy='65' r='7' fill='white' opacity='0.5'/%3E%3Crect x='30' y='5' width='6' height='6' fill='white' opacity='0.5' transform='rotate(45 33 8)'/%3E%3Crect x='55' y='40' width='5' height='5' fill='white' opacity='0.4' transform='rotate(45 57 42)'/%3E%3C/svg%3E`
+  const grainPattern = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E`
+
   // Заглушка если ProfileCard упадёт
   const CardFallback = (
     <div style={{
@@ -112,6 +117,8 @@ export default function ProfilePage() {
               status={`★ ${rating.toFixed(1)} · ${reviewCount} отзывов`}
               contactText={isMe ? 'Кошелёк' : 'Профиль'}
               avatarUrl={profile.photoUrl || ''}
+              iconUrl={iconPattern}
+              grainUrl={grainPattern}
               showUserInfo={true}
               enableTilt={true}
               enableMobileTilt={false}
