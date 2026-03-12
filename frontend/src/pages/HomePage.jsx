@@ -1,4 +1,5 @@
 import RotatingText from '../components/RotatingText/RotatingText'
+import { ShieldCheck, Zap, Handshake, Layers, Gamepad2, Coins, Sword, Palette, KeyRound, Star, Rocket, Package, Box, LayoutGrid } from '../components/Icon'
 import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { api, useStore } from '../store'
@@ -376,21 +377,21 @@ function HyperspeedCanvas({ options = HYPERSPEED_OPTIONS }) {
 
 // ── Page data ─────────────────────────────────────────────────────────────────
 const FEATURES = [
-  { icon:'🔒', title:'Гарантия сделки', desc:'Деньги замораживаются до подтверждения получения товара' },
-  { icon:'⚡', title:'Быстрая оплата', desc:'CryptoCloud, RuKassa (карта РФ, СБП) и CryptoBot' },
-  { icon:'🤝', title:'Арбитраж споров', desc:'Команда администраторов решит любой спор за 24 часа' },
-  { icon:'🟡', title:'Тысячи товаров', desc:'Аккаунты, скины, валюта, ключи и многое другое' },
+  { icon: <ShieldCheck size={28} strokeWidth={1.5}/>, title:'Гарантия сделки', desc:'Деньги замораживаются до подтверждения получения товара' },
+  { icon: <Zap size={28} strokeWidth={1.5}/>, title:'Быстрая оплата', desc:'CryptoCloud, RuKassa (карта РФ, СБП) и CryptoBot' },
+  { icon: <Handshake size={28} strokeWidth={1.5}/>, title:'Арбитраж споров', desc:'Команда администраторов решит любой спор за 24 часа' },
+  { icon: <Layers size={28} strokeWidth={1.5}/>, title:'Тысячи товаров', desc:'Аккаунты, скины, валюта, ключи и многое другое' },
 ]
 
 const CATEGORIES = [
-  { icon:'🎮', name:'Аккаунты', slug:'game-accounts', count:'1.2k+' },
-  { icon:'💰', name:'Валюта', slug:'game-currency', count:'800+' },
-  { icon:'⚔️', name:'Предметы', slug:'items', count:'500+' },
-  { icon:'🎨', name:'Скины', slug:'skins', count:'2.1k+' },
-  { icon:'🔑', name:'Ключи', slug:'keys', count:'300+' },
-  { icon:'⭐', name:'Подписки', slug:'subscriptions', count:'150+' },
-  { icon:'🚀', name:'Буст', slug:'boost', count:'200+' },
-  { icon:'📦', name:'Прочее', slug:'other', count:'400+' },
+  { icon: <Gamepad2 size={26} strokeWidth={1.5}/>, name:'Аккаунты', slug:'game-accounts', count:'1.2k+' },
+  { icon: <Coins size={26} strokeWidth={1.5}/>, name:'Валюта', slug:'game-currency', count:'800+' },
+  { icon: <Sword size={26} strokeWidth={1.5}/>, name:'Предметы', slug:'items', count:'500+' },
+  { icon: <Palette size={26} strokeWidth={1.5}/>, name:'Скины', slug:'skins', count:'2.1k+' },
+  { icon: <KeyRound size={26} strokeWidth={1.5}/>, name:'Ключи', slug:'keys', count:'300+' },
+  { icon: <Star size={26} strokeWidth={1.5}/>, name:'Подписки', slug:'subscriptions', count:'150+' },
+  { icon: <Rocket size={26} strokeWidth={1.5}/>, name:'Буст', slug:'boost', count:'200+' },
+  { icon: <Package size={26} strokeWidth={1.5}/>, name:'Прочее', slug:'other', count:'400+' },
 ]
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -428,7 +429,7 @@ export default function HomePage() {
           textAlign:'center', padding:'20px',
         }}>
           <div className="badge badge-yellow anim-in" style={{ marginBottom:20, display:'inline-flex' }}>
-            🟡 Маркетплейс цифровых товаров
+            ✦ Маркетплейс цифровых товаров
           </div>
 
           <h1 className="anim-up" style={{
@@ -521,7 +522,7 @@ export default function HomePage() {
           <div className="grid-4">{Array(8).fill(0).map((_,i) => <div key={i} className="skel" style={{ height:280 }}/>)}</div>
         ) : products.length === 0 ? (
           <div style={{ textAlign:'center', padding:'60px 20px', color:'var(--t3)' }}>
-            <div style={{ fontSize:48, marginBottom:16 }}>📦</div>
+            <Box size={48} strokeWidth={1} style={{marginBottom:16, opacity:0.4}}/>
             <div style={{ fontFamily:'var(--font-h)', fontWeight:700 }}>Товаров пока нет</div>
             <p style={{ color:'var(--t4)', marginTop:8 }}>Будьте первым продавцом!</p>
             <Link to="/sell" className="btn btn-primary" style={{ marginTop:20, display:'inline-flex' }}>Разместить товар</Link>
