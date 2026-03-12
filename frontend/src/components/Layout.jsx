@@ -131,7 +131,7 @@ export default function Layout({ children }) {
                         animation:'fadeUp 0.2s ease'
                       }}>
                         {[
-                          { to:'/profile', icon:'👤', label:'Профиль' },
+                          { to:'/profile', icon:'', label:'Профиль' },
                           { to:'/wallet',  icon: <Wallet size={16} strokeWidth={1.75}/>, label:'Кошелёк' },
                           { to:'/deals',   icon: <Handshake size={16} strokeWidth={1.75}/>, label:'Сделки' },
                         ].map(item => (
@@ -251,13 +251,13 @@ export default function Layout({ children }) {
             {/* Nav links */}
             <div style={{ padding:'12px 12px', flex:1 }}>
               {[
-                { to:'/',        icon:'🏠', label:'Главная' },
-                { to:'/catalog', icon:'🛍', label:'Каталог' },
+                { to:'/',        icon:'', label:'Главная' },
+                { to:'/catalog', icon:'', label:'Каталог' },
                 ...(user ? [
-                  { to:'/sell',    icon:'➕', label:'Продать' },
+                  { to:'/sell',    icon:'', label:'Продать' },
                   { to:'/deals',   icon: <Handshake size={16} strokeWidth={1.75}/>, label:'Мои сделки' },
                   { to:'/wallet',  icon: <Wallet size={16} strokeWidth={1.75}/>, label:'Кошелёк' },
-                  { to:'/profile', icon:'👤', label:'Профиль' },
+                  { to:'/profile', icon:'', label:'Профиль' },
                 ] : []),
                 { to:'/legal/rules',    icon: <FileText size={16} strokeWidth={1.75}/>, label:'Правила' },
                 { to:'/legal/refund',   icon: <RotateCcw size={16} strokeWidth={1.75}/>, label:'Возврат' },
