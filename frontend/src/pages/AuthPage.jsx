@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Zap, Rocket, Key, Eye, EyeOff, ArrowLeft, Smartphone, Lightbulb } from '../components/Icon'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { api, useStore } from '../store'
 import toast from 'react-hot-toast'
@@ -92,7 +93,7 @@ export default function AuthPage() {
 
   const BotInstructions = ({ action }) => (
     <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.2)', borderRadius:14, padding:16, marginBottom:20 }}>
-      <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:13, color:'var(--accent)', marginBottom:10 }}>📱 Инструкция</div>
+      <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:13, color:'var(--accent)', marginBottom:10 }}><Smartphone size={13} style={{marginRight:5}}/> Инструкция</div>
       <ol style={{ color:'var(--t2)', fontSize:13, lineHeight:2, paddingLeft:18, margin:0 }}>
         <li>Откройте бота <a href={`https://t.me/${botName||'MinionsMarketBot'}`} target="_blank" rel="noopener" style={{ color:'var(--accent)' }}>{botName ? `@${botName}` : 'Telegram Bot'}</a></li>
         <li>Отправьте: <code style={{ background:'var(--bg3)', padding:'2px 8px', borderRadius:6, color:'var(--accent)', fontFamily:'monospace' }}>/{action} {username}</code></li>
@@ -138,14 +139,14 @@ export default function AuthPage() {
 
         {/* Лого */}
         <div style={{ textAlign:'center', marginBottom:28 }}>
-          <div style={{ fontSize:44, marginBottom:6 }}>🟡</div>
+          <Zap size={44} strokeWidth={1.25} style={{marginBottom:6, color:'var(--accent)'}}/>
           <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:26, letterSpacing:'-0.02em' }}>
             Minions<span style={{ color:'var(--accent)' }}>.</span>Market
           </div>
           <div style={{ color:'var(--t3)', fontSize:13, marginTop:4 }}>
-            {mode==='login' && 'Рады видеть снова 👋'}
-            {mode==='register' && 'Создайте аккаунт 🚀'}
-            {mode==='reset' && 'Восстановление пароля 🔑'}
+            {mode==='login' && 'Рады видеть снова'}
+            {mode==='register' && 'Создайте аккаунт'}
+            {mode==='reset' && 'Восстановление пароля'}
           </div>
         </div>
 
@@ -188,12 +189,12 @@ export default function AuthPage() {
                     onKeyDown={e => e.key==='Enter' && handleLogin()}
                     style={{ paddingRight:44 }}/>
                   <button onClick={() => setShowPass(!showPass)} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--t3)', fontSize:16 }}>
-                    {showPass?'🙈':'👁'}
+                    {showPass ? <EyeOff size={16} strokeWidth={1.75}/> : <Eye size={16} strokeWidth={1.75}/>}
                   </button>
                 </div>
               </div>
               <button className="btn btn-primary btn-full" onClick={handleLogin} disabled={loading}>
-                {loading ? <Spinner/> : 'Войти →'}
+                {loading ? <Spinner/> : 'Войти'}
               </button>
               <button onClick={() => { setMode('reset'); setUsername(''); setResetStep(1) }}
                 style={{ marginTop:12, background:'none', border:'none', color:'var(--t3)', fontSize:13, cursor:'pointer', width:'100%', textAlign:'center' }}>
@@ -206,7 +207,7 @@ export default function AuthPage() {
           {mode==='register' && step===1 && (
             <div className="anim-in">
               <div style={{ background:'rgba(124,106,255,0.08)', border:'1px solid rgba(124,106,255,0.2)', borderRadius:12, padding:14, marginBottom:20, fontSize:13, color:'var(--t2)', lineHeight:1.6 }}>
-                💡 Регистрация через Telegram — просто и безопасно. Никакой почты!
+                Регистрация через Telegram — просто и безопасно. Никакой почты!
               </div>
               <div style={{ marginBottom:20 }}>
                 <Label>ПРИДУМАЙТЕ ЛОГИН</Label>
@@ -216,7 +217,7 @@ export default function AuthPage() {
                 <div style={{ fontSize:11, color:'var(--t4)', marginTop:6 }}>Минимум 3 символа, только a-z, 0-9, _</div>
               </div>
               <button className="btn btn-primary btn-full" onClick={handleRegisterCheck} disabled={loading}>
-                {loading ? <Spinner/> : 'Далее →'}
+                {loading ? <Spinner/> : 'Далее'}
               </button>
             </div>
           )}
@@ -224,7 +225,7 @@ export default function AuthPage() {
           {/* REGISTER step 2 */}
           {mode==='register' && step===2 && (
             <div className="anim-in">
-              <button onClick={() => setStep(1)} style={{ background:'none', border:'none', color:'var(--t3)', fontSize:13, cursor:'pointer', marginBottom:16, padding:0, display:'flex', alignItems:'center', gap:6 }}>← Назад</button>
+              <button onClick={() => setStep(1)} style={{ background:'none', border:'none', color:'var(--t3)', fontSize:13, cursor:'pointer', marginBottom:16, padding:0, display:'flex', alignItems:'center', gap:6 }} style={{display:'flex',alignItems:'center',gap:4}}><ArrowLeft size={14} strokeWidth={2}/> Назад</button>
               <BotInstructions action="code"/>
               <div style={{ marginBottom:14 }}>
                 <Label>КОД ИЗ БОТА</Label>
@@ -238,12 +239,12 @@ export default function AuthPage() {
                   <input className="inp" type={showPass?'text':'password'} placeholder="Минимум 6 символов"
                     value={password} onChange={e => setPassword(e.target.value)} style={{ paddingRight:44 }}/>
                   <button onClick={() => setShowPass(!showPass)} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--t3)', fontSize:16 }}>
-                    {showPass?'🙈':'👁'}
+                    {showPass ? <EyeOff size={16} strokeWidth={1.75}/> : <Eye size={16} strokeWidth={1.75}/>}
                   </button>
                 </div>
               </div>
               <button className="btn btn-primary btn-full" onClick={handleRegisterVerify} disabled={loading}>
-                {loading ? <Spinner/> : 'Создать аккаунт →'}
+                {loading ? <Spinner/> : 'Создать аккаунт'}
               </button>
             </div>
           )}
@@ -251,14 +252,14 @@ export default function AuthPage() {
           {/* RESET step 1 */}
           {mode==='reset' && resetStep===1 && (
             <div className="anim-in">
-              <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, marginBottom:20 }}>🔑 Сброс пароля</div>
+              <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, marginBottom:20, display:'flex', alignItems:'center', gap:8 }}><Key size={20} strokeWidth={1.75}/> Сброс пароля</div>
               <div style={{ marginBottom:20 }}>
                 <Label>ВАШ ЛОГИН</Label>
                 <input className="inp" placeholder="your_username"
                   value={username} onChange={e => setUsername(e.target.value.toLowerCase())}/>
               </div>
               <button className="btn btn-primary btn-full" onClick={handleResetRequest} disabled={loading}>
-                {loading ? <Spinner/> : 'Получить код →'}
+                {loading ? <Spinner/> : 'Получить код'}
               </button>
               <button onClick={() => setMode('login')} style={{ marginTop:12, background:'none', border:'none', color:'var(--t3)', fontSize:13, cursor:'pointer', width:'100%', textAlign:'center' }}>
                 ← Назад к входу
@@ -283,7 +284,7 @@ export default function AuthPage() {
                   value={newPass} onChange={e => setNewPass(e.target.value)}/>
               </div>
               <button className="btn btn-primary btn-full" onClick={handleResetConfirm} disabled={loading}>
-                {loading ? <Spinner/> : 'Сохранить пароль →'}
+                {loading ? <Spinner/> : 'Сохранить пароль'}
               </button>
             </div>
           )}
