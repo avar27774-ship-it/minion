@@ -27,8 +27,23 @@ export default function ProfilePage() {
   const [tab, setTab]           = useState('products')
 
   useEffect(() => {
+    // Если смотрим свой профиль (/profile без id) — ждём пока загрузится user
+    if (!id && !me) {
+      // Ещё грузится — подождём
+      return
+    }
+    if (!id && me === undefined) return
+
+    // Если своя страница — используем /users/me эндпоинт через id пользователя
     const targetId = id || me?._id || me?.id
-    if (!targetId) { navigate('/auth'); return }
+
+    if (!targetId) {
+      // user точно null (не залогинен)
+      navigate('/auth')
+      return
+    }
+
+    setLoading(true)
     api.get(`/users/${targetId}`)
       .then(r => {
         setProfile(r.data.user)
@@ -38,6 +53,13 @@ export default function ProfilePage() {
       .catch(() => toast.error('Пользователь не найден'))
       .finally(() => setLoading(false))
   }, [id, me])
+
+  // Показываем лоадер пока me ещё не определился (null = не залогинен, undefined = грузится)
+  if (!id && me === undefined) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'40vh' }}>
+      <div style={{ width:32, height:32, border:'3px solid var(--border)', borderTopColor:'var(--accent)', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
+    </div>
+  )
 
   if (loading) return (
     <div style={{ maxWidth:900, margin:'0 auto', padding:'40px 20px' }}>
@@ -175,4 +197,4 @@ export default function ProfilePage() {
       </div>
     </div>
   )
-                }
+}
