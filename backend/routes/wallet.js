@@ -5,7 +5,7 @@ const { auth } = require('../middleware/auth');
 const rukassa  = require('../utils/rukassa');
 const cryptocloud = require('../utils/cryptocloud');
 const notify   = require('../utils/notify');
-const { sanitizeUser } = require('./routes_auth');
+const { sanitizeUser } = require('./auth');
 
 const MIN_DEPOSIT = 1;
 
