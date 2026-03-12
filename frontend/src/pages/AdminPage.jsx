@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Component } from 'react'
-import { Users, Package, Handshake, DollarSign, ShieldCheck, MessageCircle, CreditCard, Zap, Ban, CheckCircle, UserCheck, Trash2, Send, BarChart2, AlertTriangle, RotateCcw, LogOut } from '../components/Icon'
+import { Users, Package, Handshake, DollarSign, ShieldCheck, MessageCircle, CreditCard, Zap, Ban, CheckCircle, XCircle, UserCheck, UserPlus, Trash2, Send, BarChart2, AlertTriangle, RotateCcw, LogOut, Edit, Star, Clock } from '../components/Icon'
 import toast from 'react-hot-toast'
 
 const adminFetch = async (path, opts = {}) => {
@@ -196,26 +196,32 @@ export default function AdminPage() {
   )
 
   const TABS = [
-    ['stats','Статистика'],['users','Пользователи'],['deals','Сделки'],
-    ['products','Товары'],['transactions','Транзакции'],['security','Безопасность'],['messages','Сообщения']
+    ['stats',    <BarChart2 size={14}/>,    'Статистика'],
+    ['users',    <Users size={14}/>,       'Пользователи'],
+    ['deals',    <Handshake size={14}/>,    'Сделки'],
+    ['products', <Package size={14}/>,      'Товары'],
+    ['transactions', <CreditCard size={14}/>, 'Транзакции'],
+    ['security', <ShieldCheck size={14}/>,  'Безопасность'],
+    ['messages', <MessageCircle size={14}/>, 'Сообщения']
   ]
 
   return (
     <div style={{ maxWidth:1280, margin:'0 auto', padding:'24px 20px', minHeight:'100vh' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
         <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:24 }}><Zap size={20} strokeWidth={1.75} style={{marginRight:8}}/> Панель администратора</h1>
-        <button className="btn btn-danger btn-sm" onClick={() => { localStorage.removeItem('mn_admin_token'); setAuthed(false) }}>Выйти</button>
+        <button className="btn btn-danger btn-sm" onClick={() => { localStorage.removeItem('mn_admin_token'); setAuthed(false) }} style={{display:'flex',alignItems:'center',gap:6}}><LogOut size={14} strokeWidth={2}/> Выйти</button>
       </div>
 
       <div style={{ display:'flex', gap:6, marginBottom:24, flexWrap:'wrap' }}>
-        {TABS.map(([v,l]) => (
+        {TABS.map(([v,icon,l]) => (
           <button key={v} onClick={() => setTab(v)} style={{
-            padding:'8px 16px', borderRadius:8, border:'1px solid', cursor:'pointer',
+            padding:'8px 14px', borderRadius:8, border:'1px solid', cursor:'pointer',
             fontSize:13, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
+            display:'flex', alignItems:'center', gap:6,
             background: tab===v ? 'rgba(245,200,66,0.12)' : 'transparent',
             borderColor: tab===v ? 'rgba(245,200,66,0.4)' : 'var(--border)',
             color: tab===v ? 'var(--accent)' : 'var(--t2)'
-          }}>{l}</button>
+          }}>{icon}{l}</button>
         ))}
       </div>
 
@@ -290,25 +296,25 @@ export default function AdminPage() {
                         <div style={{ flex:1 }}>
                           <div style={{ fontWeight:600, fontSize:14 }}>
                             @{u.username||'—'}
-                            {u.isAdmin    && <span style={{ color:'var(--accent)', marginLeft:6 }}>⚡</span>}
-                            {u.isVerified && <span style={{ color:'var(--green)', marginLeft:6 }}>✓</span>}
-                            {u.isBanned   && <span style={{ color:'var(--red)', marginLeft:6 }}>x</span>}
+                            {u.isAdmin    && <Zap size={13} strokeWidth={2} style={{ color:'var(--accent)', marginLeft:6 }}/>}
+                            {u.isVerified && <CheckCircle size={13} strokeWidth={2} style={{ color:'var(--green)', marginLeft:6 }}/>}
+                            {u.isBanned   && <Ban size={13} strokeWidth={2} style={{ color:'var(--red)', marginLeft:6 }}/>}
                           </div>
                           <div style={{ fontSize:12, color:'var(--t3)' }}>
                             Баланс: ${safe(u.balance).toFixed(2)} · Рейт: {safe(u.rating, 5).toFixed(1)} · TG: {u.telegram_id||'—'} · IP: {u.last_ip||'—'}
                           </div>
                         </div>
                         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                          <button className="btn btn-sm btn-secondary" onClick={() => adjustBalance(uid)} title="Изменить баланс"></button>
-                          {!u.isVerified && <button className="btn btn-sm btn-secondary" onClick={() => verifyUser(uid)} title="Верифицировать">✓</button>}
+                          <button className="btn btn-sm btn-secondary" onClick={() => adjustBalance(uid)} title="Изменить баланс"><DollarSign size={13} strokeWidth={2}/></button>
+                          {!u.isVerified && <button className="btn btn-sm btn-secondary" onClick={() => verifyUser(uid)} title="Верифицировать"><UserCheck size={13} strokeWidth={2}/></button>}
                           <button className="btn btn-sm btn-secondary" onClick={() => makeSubAdmin(uid, u.isSubAdmin)}
                             title={u.isSubAdmin ? 'Снять права' : 'Назначить помощником'}
-                            style={{ color: u.isSubAdmin ? 'var(--accent)' : 'var(--t3)' }}>⚡</button>
+                            style={{ color: u.isSubAdmin ? 'var(--accent)' : 'var(--t3)' }}><Zap size={13} strokeWidth={2}/></button>
                           {u.isBanned
-                            ? <button className="btn btn-sm btn-secondary" onClick={() => unbanUser(uid)} title="Разблокировать">✓</button>
-                            : <button className="btn btn-sm btn-danger" onClick={() => banUser(uid)} title="Заблокировать">x</button>
+                            ? <button className="btn btn-sm btn-secondary" onClick={() => unbanUser(uid)} title="Разблокировать"><CheckCircle size={13} strokeWidth={2}/></button>
+                            : <button className="btn btn-sm btn-danger" onClick={() => banUser(uid)} title="Заблокировать"><Ban size={13} strokeWidth={2}/></button>
                           }
-                          <button className="btn btn-sm btn-ghost" onClick={() => { setMsgUserId(uid); setTab('messages') }} title="Отправить сообщение"></button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => { setMsgUserId(uid); setTab('messages') }} title="Отправить сообщение"><MessageCircle size={13} strokeWidth={2}/></button>
                         </div>
                       </div>
                     )
@@ -347,8 +353,8 @@ export default function AdminPage() {
                       </div>
                       {d.status==='disputed' && (
                         <div style={{ display:'flex', gap:8, marginTop:10 }}>
-                          <button className="btn btn-sm btn-primary" onClick={() => resolveDispute(did,'complete')}>✓ Продавцу</button>
-                          <button className="btn btn-sm btn-danger" onClick={() => resolveDispute(did,'refund')}>↩ Покупателю</button>
+                          <button className="btn btn-sm btn-primary" onClick={() => resolveDispute(did,'complete')} style={{display:'flex',alignItems:'center',gap:4}}><CheckCircle size={13}/> Продавцу</button>
+                          <button className="btn btn-sm btn-danger" onClick={() => resolveDispute(did,'refund')} style={{display:'flex',alignItems:'center',gap:4}}><RotateCcw size={13}/> Покупателю</button>
                         </div>
                       )}
                     </div>
@@ -372,7 +378,7 @@ export default function AdminPage() {
                         <div style={{ fontSize:12, color:'var(--t3)' }}>@{p.seller?.username||'?'} · ${safe(p.price).toFixed(2)} · {p.category||'—'}</div>
                       </div>
                       <span style={{ fontSize:11, fontWeight:700, color: p.status==='active' ? 'var(--green)' : 'var(--t3)' }}>{p.status}</span>
-                      <button className="btn btn-sm btn-danger" onClick={() => deleteProduct(pid)}></button>
+                      <button className="btn btn-sm btn-danger" onClick={() => deleteProduct(pid)}><Trash2 size={13} strokeWidth={2}/></button>
                     </div>
                   )
                 })
