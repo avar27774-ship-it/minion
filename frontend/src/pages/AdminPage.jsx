@@ -1,4 +1,5 @@
 import React, { useState, useEffect, Component } from 'react'
+import { Users, Package, Handshake, DollarSign, ShieldCheck, MessageCircle, CreditCard, Zap, Ban, CheckCircle, UserCheck, Trash2, Send, BarChart2, AlertTriangle, RotateCcw, LogOut } from '../components/Icon'
 import toast from 'react-hot-toast'
 
 const adminFetch = async (path, opts = {}) => {
@@ -181,7 +182,7 @@ export default function AdminPage() {
       background:'radial-gradient(ellipse 60% 60% at 50% 0%, rgba(245,200,66,0.06), var(--bg))' }}>
       <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:24, padding:36, width:'100%', maxWidth:380 }}>
         <div style={{ textAlign:'center', marginBottom:28 }}>
-          <div style={{ fontSize:40, marginBottom:8 }}>⚡</div>
+          <div style={{ fontSize:40, marginBottom:8 }}><Zap size={36} strokeWidth={1.5}/></div>
           <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:22 }}>Панель администратора</div>
         </div>
         <input className="inp" placeholder="Логин" value={login} onChange={e => setLogin(e.target.value)} style={{ marginBottom:10 }}/>
@@ -195,14 +196,14 @@ export default function AdminPage() {
   )
 
   const TABS = [
-    ['stats','📊 Статистика'],['users','👥 Пользователи'],['deals','🤝 Сделки'],
-    ['products','📦 Товары'],['transactions','💳 Транзакции'],['security','🔐 Безопасность'],['messages','💬 Сообщения']
+    ['stats','Статистика'],['users','Пользователи'],['deals','Сделки'],
+    ['products','Товары'],['transactions','Транзакции'],['security','Безопасность'],['messages','Сообщения']
   ]
 
   return (
     <div style={{ maxWidth:1280, margin:'0 auto', padding:'24px 20px', minHeight:'100vh' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
-        <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:24 }}>⚡ Панель администратора</h1>
+        <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:24 }}><Zap size={20} strokeWidth={1.75} style={{marginRight:8}}/> Панель администратора</h1>
         <button className="btn btn-danger btn-sm" onClick={() => { localStorage.removeItem('mn_admin_token'); setAuthed(false) }}>Выйти</button>
       </div>
 
@@ -229,10 +230,10 @@ export default function AdminPage() {
               <>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:28 }}>
                   {[
-                    ['Пользователей', stats.users ?? '—', '👥'],
-                    ['Активных товаров', stats.products ?? '—', '📦'],
-                    ['Всего сделок', stats.deals ?? '—', '🤝'],
-                    ['Доход', '$' + safe(stats.revenue).toFixed(2), '💰'],
+                    ['Пользователей', stats.users ?? '—', <Users size={28} strokeWidth={1.5}/>],
+                    ['Активных товаров', stats.products ?? '—', <Package size={28} strokeWidth={1.5}/>],
+                    ['Всего сделок', stats.deals ?? '—', <Handshake size={28} strokeWidth={1.5}/>],
+                    ['Доход', '$' + safe(stats.revenue).toFixed(2), <DollarSign size={28} strokeWidth={1.5}/>],
                   ].map(([l,v,i]) => (
                     <div key={l} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:20, textAlign:'center' }}>
                       <div style={{ fontSize:28, marginBottom:8 }}>{i}</div>
