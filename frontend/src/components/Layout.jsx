@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { Wallet, Handshake, FileText, RotateCcw, Mail, Zap, UserCircle, LogOut, Settings, Home, LayoutGrid, Plus, DollarSign, ShieldCheck } from './Icon'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useStore, api } from '../store'
 
 // ── Иконки для нижней навигации ────────────────────────────────────────────────
-const IconHome    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-const IconGrid    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-const IconPlus    = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-const IconDeals   = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-const IconProfile = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+const IconHome    = () => <Home size={22} strokeWidth={1.75}/>
+const IconGrid    = () => <LayoutGrid size={22} strokeWidth={1.75}/>
+const IconPlus    = () => <Plus size={24} strokeWidth={2}/>
+const IconDeals   = () => <Handshake size={22} strokeWidth={1.75}/>
+const IconProfile = () => <UserCircle size={22} strokeWidth={1.75}/>
 
 export default function Layout({ children }) {
   const { user, setUser, logout, refreshUser } = useStore()
@@ -81,7 +82,7 @@ export default function Layout({ children }) {
               background:'linear-gradient(135deg, #f5c842, #e8500a)',
               display:'flex', alignItems:'center', justifyContent:'center',
               fontSize:20, boxShadow:'0 4px 16px rgba(245,200,66,0.4)'
-            }}>🟡</div>
+            }}>M</div>
             <span style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:18, letterSpacing:'-0.02em' }}>
               Minions<span style={{ color:'var(--accent)' }}>.</span>Market
             </span>
@@ -131,8 +132,8 @@ export default function Layout({ children }) {
                       }}>
                         {[
                           { to:'/profile', icon:'👤', label:'Профиль' },
-                          { to:'/wallet',  icon:'💰', label:'Кошелёк' },
-                          { to:'/deals',   icon:'🤝', label:'Сделки' },
+                          { to:'/wallet',  icon: <Wallet size={16} strokeWidth={1.75}/>, label:'Кошелёк' },
+                          { to:'/deals',   icon: <Handshake size={16} strokeWidth={1.75}/>, label:'Сделки' },
                         ].map(item => (
                           <Link key={item.to} to={item.to} style={{
                             display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
@@ -148,7 +149,7 @@ export default function Layout({ children }) {
                             display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
                             borderRadius:10, color:'var(--accent)', fontSize:14
                           }}>
-                            <span>⚡</span> Админка
+                            <Zap size={13} strokeWidth={2}/> Админка
                           </Link>
                         )}
                         <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>
@@ -180,7 +181,7 @@ export default function Layout({ children }) {
                 background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10,
                 fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)'
               }}>
-                💰 ${parseFloat(user.balance||0).toFixed(2)}
+                <DollarSign size={13} strokeWidth={2} style={{marginRight:2}}/>${parseFloat(user.balance||0).toFixed(2)}
               </div>
             )}
             <button
@@ -218,7 +219,7 @@ export default function Layout({ children }) {
             {/* Drawer header */}
             <div style={{ padding:'20px 20px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <span style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:16 }}>
-                🟡 Minions<span style={{ color:'var(--accent)' }}>.</span>Market
+                Minions<span style={{ color:'var(--accent)' }}>.</span>Market
               </span>
               <button onClick={() => setMobileMenu(false)} style={{
                 width:36, height:36, borderRadius:8, background:'var(--bg3)',
@@ -254,13 +255,13 @@ export default function Layout({ children }) {
                 { to:'/catalog', icon:'🛍', label:'Каталог' },
                 ...(user ? [
                   { to:'/sell',    icon:'➕', label:'Продать' },
-                  { to:'/deals',   icon:'🤝', label:'Мои сделки' },
-                  { to:'/wallet',  icon:'💰', label:'Кошелёк' },
+                  { to:'/deals',   icon: <Handshake size={16} strokeWidth={1.75}/>, label:'Мои сделки' },
+                  { to:'/wallet',  icon: <Wallet size={16} strokeWidth={1.75}/>, label:'Кошелёк' },
                   { to:'/profile', icon:'👤', label:'Профиль' },
                 ] : []),
-                { to:'/legal/rules',    icon:'📋', label:'Правила' },
-                { to:'/legal/refund',   icon:'↩',  label:'Возврат' },
-                { to:'/legal/contacts', icon:'📬', label:'Контакты' },
+                { to:'/legal/rules',    icon: <FileText size={16} strokeWidth={1.75}/>, label:'Правила' },
+                { to:'/legal/refund',   icon: <RotateCcw size={16} strokeWidth={1.75}/>, label:'Возврат' },
+                { to:'/legal/contacts', icon: <Mail size={16} strokeWidth={1.75}/>, label:'Контакты' },
               ].map(item => (
                 <Link key={item.to} to={item.to} style={{
                   display:'flex', alignItems:'center', gap:14, padding:'13px 12px',
@@ -281,7 +282,7 @@ export default function Layout({ children }) {
                   borderRadius:12, color:'var(--accent)', fontSize:15, fontWeight:600,
                   background:'rgba(245,200,66,0.06)', marginTop:8,
                 }}>
-                  <span style={{ fontSize:20, width:24, textAlign:'center' }}>⚡</span>
+                  <Zap size={20} strokeWidth={1.75}/>
                   Админ панель
                 </Link>
               )}
@@ -317,7 +318,7 @@ export default function Layout({ children }) {
           <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr', gap:40, marginBottom:32 }}>
             <div>
               <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:18, marginBottom:12 }}>
-                🟡 Minions<span style={{ color:'var(--accent)' }}>.</span>Market
+                Minions<span style={{ color:'var(--accent)' }}>.</span>Market
               </div>
               <p style={{ color:'var(--t3)', fontSize:13, lineHeight:1.7, maxWidth:280 }}>
                 Безопасный маркетплейс цифровых товаров. Все сделки через систему гаранта.
