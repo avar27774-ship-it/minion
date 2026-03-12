@@ -1,9 +1,9 @@
 const router = require('express').Router();
-const db     = require('../models/db');
+const { queryAll } = require('../models/db');
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const cats = db.prepare('SELECT * FROM categories WHERE is_active = 1 ORDER BY sort_order').all();
+    const cats = await queryAll('SELECT * FROM categories WHERE is_active = 1 ORDER BY sort_order');
     res.json({ categories: cats.map(c => ({ ...c, _id: c.id })) });
   } catch (e) {
     res.status(500).json({ error: 'Ошибка' });
