@@ -5,6 +5,7 @@ const { queryOne, queryAll, run } = require('../models/db');
 const { generateToken, auth } = require('../middleware/auth');
 const { getBot } = require('../utils/bot');
 const notify  = require('../utils/notify');
+const { log, getIp, EVENTS } = require('../utils/securityLog');
 
 function sanitizeUser(u) {
   if (!u) return null;
@@ -77,17 +78,16 @@ router.post('/register/verify', async (req, res) => {
     const uname = username.toLowerCase();
     const trimmedCode = code.trim();
     const now = Math.floor(Date.now() / 1000);
+    const ip  = getIp(req);
 
     const alreadyDone = await queryOne('SELECT id, password FROM users WHERE username = $1', [uname]);
     if (alreadyDone?.password) return res.status(409).json({ error: 'Логин уже занят' });
 
-    // Find stub user by username + code
     let stubUser = await queryOne(
       `SELECT * FROM users WHERE username = $1 AND otp_code = $2 AND otp_used = 0 AND otp_expires > $3`,
       [uname, trimmedCode, now]
     );
 
-    // Fallback: find by code only
     if (!stubUser) {
       const byCode = await queryAll(
         `SELECT * FROM users WHERE otp_code = $1 AND otp_used = 0 AND otp_expires > $2 AND password IS NULL`,
@@ -97,6 +97,7 @@ router.post('/register/verify', async (req, res) => {
     }
 
     if (!stubUser) {
+      await log(EVENTS.LOGIN_FAIL, req, { username: uname, details: { reason: 'invalid_otp' } });
       return res.status(400).json({
         error: `Неверный или просроченный код. Запросите новый командой /code ${uname} в боте.`
       });
@@ -104,13 +105,14 @@ router.post('/register/verify', async (req, res) => {
 
     const hash = await bcrypt.hash(password, 12);
     await run(
-      `UPDATE users SET password = $1, otp_used = 1, otp_code = NULL, otp_expires = NULL, is_verified = 1 WHERE id = $2`,
-      [hash, stubUser.id]
+      `UPDATE users SET password = $1, otp_used = 1, otp_code = NULL, otp_expires = NULL, is_verified = 1, register_ip = $2, last_ip = $3 WHERE id = $4`,
+      [hash, ip, ip, stubUser.id]
     );
 
     const user = await queryOne('SELECT * FROM users WHERE id = $1', [stubUser.id]);
     const token = generateToken(user.id);
 
+    await log(EVENTS.REGISTER, req, { userId: user.id, username: uname });
     if (user.telegram_id) notify.notifyRegistered(user).catch(() => {});
 
     res.json({ token, user: sanitizeUser(user) });
@@ -127,17 +129,28 @@ router.post('/login', async (req, res) => {
     if (!username || !password) return res.status(400).json({ error: 'Заполните все поля' });
 
     const user = await queryOne('SELECT * FROM users WHERE username = $1', [username.toLowerCase()]);
-    if (!user || !user.password) return res.status(401).json({ error: 'Неверный логин или пароль' });
+
+    if (!user || !user.password) {
+      await log(EVENTS.LOGIN_FAIL, req, { username, details: { reason: 'user_not_found' } });
+      return res.status(401).json({ error: 'Неверный логин или пароль' });
+    }
 
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ error: 'Неверный логин или пароль' });
+    if (!ok) {
+      await log(EVENTS.LOGIN_FAIL, req, { userId: user.id, username: user.username, details: { reason: 'wrong_password' } });
+      return res.status(401).json({ error: 'Неверный логин или пароль' });
+    }
 
     if (user.is_banned) {
+      await log(EVENTS.BANNED_ACCESS, req, { userId: user.id, username: user.username });
       const until = user.banned_until ? ` до ${new Date(user.banned_until * 1000).toLocaleDateString('ru')}` : ' навсегда';
       return res.status(403).json({ error: `Аккаунт заблокирован${until}. ${user.ban_reason || ''}` });
     }
 
-    await run('UPDATE users SET last_active = $1 WHERE id = $2', [Math.floor(Date.now() / 1000), user.id]);
+    const now = Math.floor(Date.now() / 1000);
+    await run('UPDATE users SET last_active = $1, last_ip = $2 WHERE id = $3', [now, getIp(req), user.id]);
+    await log(EVENTS.LOGIN_OK, req, { userId: user.id, username: user.username });
+
     const token = generateToken(user.id);
     res.json({ token, user: sanitizeUser(user) });
   } catch (e) {
@@ -160,6 +173,7 @@ router.post('/reset/request', async (req, res) => {
       const expires = Math.floor(Date.now() / 1000) + 15 * 60;
       await run('UPDATE users SET reset_code = $1, reset_expires = $2 WHERE id = $3', [code, expires, user.id]);
       notify.sendCode(user.telegram_id, code, 'reset').catch(() => {});
+      await log(EVENTS.RESET_CODE, req, { userId: user.id, username: user.username });
     }
 
     res.json({ ok: true, botUsername });
@@ -183,6 +197,8 @@ router.post('/reset/confirm', async (req, res) => {
 
     const hash = await bcrypt.hash(newPassword, 12);
     await run('UPDATE users SET password = $1, reset_code = NULL, reset_expires = NULL WHERE id = $2', [hash, user.id]);
+    await log(EVENTS.RESET_OK, req, { userId: user.id, username: user.username });
+
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Внутренняя ошибка' });
@@ -193,7 +209,9 @@ router.post('/reset/confirm', async (req, res) => {
 router.get('/me', auth, async (req, res) => {
   try {
     const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.userId]);
-    res.json({ user: sanitizeUser(user) });
+    // Обновляем last_ip при каждом /me
+    await run('UPDATE users SET last_ip = $1 WHERE id = $2', [getIp(req), req.userId]).catch(() => {});
+    res.json(sanitizeUser(user));
   } catch (e) {
     res.status(500).json({ error: 'Ошибка' });
   }
