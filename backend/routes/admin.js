@@ -1,4 +1,5 @@
 const router   = require('express').Router();
+const { log, getIp, getRecentLogs, EVENTS } = require('../utils/securityLog');
 const crypto   = require('crypto');
 const { queryOne, queryAll, run, transaction } = require('../models/db');
 const { adminPanelAuth, generateAdminToken } = require('../middleware/auth');
@@ -8,11 +9,26 @@ const { sanitizeUser } = require('./auth');
 
 router.post('/login', async (req, res) => {
   const { login, password } = req.body;
-  const adminLogin    = (process.env.ADMIN_LOGIN    || 'admin').trim();
-  const adminPassword = (process.env.ADMIN_PASSWORD || 'changeme123').trim();
+  const adminLogin    = process.env.ADMIN_LOGIN?.trim();
+  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+
+  // Если переменные не заданы — вход ЗАПРЕЩЁН (защита от дефолтных паролей)
+  if (!adminLogin || !adminPassword) {
+    console.error('SECURITY: ADMIN_LOGIN or ADMIN_PASSWORD not set in environment!');
+    return res.status(503).json({ error: 'Панель администратора не настроена' });
+  }
+
+  // Защита от брутфорса — искусственная задержка
+  await new Promise(r => setTimeout(r, 500));
+
   if ((login||'').trim() !== adminLogin || (password||'').trim() !== adminPassword) {
+    console.warn(`SECURITY: Failed admin login attempt for "${login}" from ${req.ip}`);
+    await log(EVENTS.ADMIN_LOGIN_FAIL, req, { username: login });
     return res.status(401).json({ error: 'Неверные данные' });
   }
+
+  console.log(`Admin login successful from ${req.ip}`);
+  await log(EVENTS.ADMIN_LOGIN_OK, req, { username: login, details: { ip: getIp(req) } });
   res.json({ token: generateAdminToken() });
 });
 
@@ -174,3 +190,11 @@ router.post('/users/:id/remove-subadmin', async (req, res) => {
 });
 
 module.exports = router;
+
+router.get('/security-logs', async (req, res) => {
+  try {
+    const { event, ip, limit = 200 } = req.query;
+    const logs = await getRecentLogs({ event, ip, limit: parseInt(limit) });
+    res.json(logs);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
