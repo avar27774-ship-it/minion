@@ -225,7 +225,7 @@ export default function AuthPage() {
           {/* REGISTER step 2 */}
           {mode==='register' && step===2 && (
             <div className="anim-in">
-              <button onClick={() => setStep(1)} style={{ background:'none', border:'none', color:'var(--t3)', fontSize:13, cursor:'pointer', marginBottom:16, padding:0, display:'flex', alignItems:'center', gap:6 }} style={{display:'flex',alignItems:'center',gap:4}}><ArrowLeft size={14} strokeWidth={2}/> Назад</button>
+              <button onClick={() => setStep(1)} style={{ background:'none', border:'none', color:'var(--t3)', fontSize:13, cursor:'pointer', marginBottom:16, padding:0, display:'flex', alignItems:'center', gap:6 }}><ArrowLeft size={14} strokeWidth={2}/> Назад</button>
               <BotInstructions action="code"/>
               <div style={{ marginBottom:14 }}>
                 <Label>КОД ИЗ БОТА</Label>
