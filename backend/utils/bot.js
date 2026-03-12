@@ -124,6 +124,19 @@ async function handleUpdate(update) {
           [code, expires, tgId, existing.id]
         );
       } else {
+        // Проверяем — не привязан ли этот Telegram к другому аккаунту
+        const tgExists = await queryOne(
+          `SELECT username FROM users WHERE telegram_id = $1`,
+          [tgId]
+        );
+        if (tgExists) {
+          await sendMessage(chatId,
+            `❌ Этот Telegram уже привязан к аккаунту <b>@${tgExists.username}</b>.\n\n` +
+            `Один Telegram — один аккаунт.\n` +
+            `Для входа используйте логин <b>${tgExists.username}</b>.`
+          );
+          return;
+        }
         await run(
           `INSERT INTO users (id, username, telegram_id, otp_code, otp_expires, otp_used)
            VALUES ($1, $2, $3, $4, $5, 0)`,
