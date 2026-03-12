@@ -1,9 +1,9 @@
 /**
  * Telegram Bot — webhook mode (не polling)
- * Webhook = Railway сам получает апдейты, конфликтов нет
  */
-const https = require('https');
+const https  = require('https');
 const crypto = require('crypto');
+const { queryOne, run } = require('../models/db');
 
 const TOKEN    = () => process.env.TELEGRAM_BOT_TOKEN || '';
 const BASE_URL = () => process.env.BACKEND_URL || '';
@@ -60,7 +60,7 @@ function setWebhook() {
   req.end();
 }
 
-// ── Обработка входящего апдейта (вызывается из роута) ─────────────────────────
+// ── Обработка входящего апдейта ───────────────────────────────────────────────
 async function handleUpdate(update) {
   const msg = update.message;
   if (!msg || !msg.text) return;
@@ -103,25 +103,32 @@ async function handleUpdate(update) {
       return;
     }
 
-    const db = require('../models/db');
-    const existing = db.prepare('SELECT id, password, telegram_id FROM users WHERE username = ?').get(username);
-
-    if (existing?.password) {
-      await sendMessage(chatId, `❌ Логин <b>${username}</b> уже занят.\n\nВыберите другой логин.`);
-      return;
-    }
-
-    const code    = String(Math.floor(100000 + Math.random() * 900000));
-    const expires = Math.floor(Date.now() / 1000) + 10 * 60;
-    const tgId    = String(chatId);
-
     try {
+      const existing = await queryOne(
+        `SELECT id, password, telegram_id FROM users WHERE username = $1`,
+        [username]
+      );
+
+      if (existing?.password) {
+        await sendMessage(chatId, `❌ Логин <b>${username}</b> уже занят.\n\nВыберите другой логин.`);
+        return;
+      }
+
+      const code    = String(Math.floor(100000 + Math.random() * 900000));
+      const expires = Math.floor(Date.now() / 1000) + 10 * 60;
+      const tgId    = String(chatId);
+
       if (existing) {
-        db.prepare(`UPDATE users SET otp_code = ?, otp_expires = ?, otp_used = 0, telegram_id = ? WHERE id = ?`)
-          .run(code, expires, tgId, existing.id);
+        await run(
+          `UPDATE users SET otp_code = $1, otp_expires = $2, otp_used = 0, telegram_id = $3 WHERE id = $4`,
+          [code, expires, tgId, existing.id]
+        );
       } else {
-        db.prepare(`INSERT INTO users (id, username, telegram_id, otp_code, otp_expires, otp_used) VALUES (?, ?, ?, ?, ?, 0)`)
-          .run(crypto.randomUUID(), username, tgId, code, expires);
+        await run(
+          `INSERT INTO users (id, username, telegram_id, otp_code, otp_expires, otp_used)
+           VALUES ($1, $2, $3, $4, $5, 0)`,
+          [crypto.randomUUID(), username, tgId, code, expires]
+        );
       }
 
       await sendMessage(chatId,
@@ -148,34 +155,44 @@ async function handleUpdate(update) {
       return;
     }
 
-    const db   = require('../models/db');
-    const user = db.prepare('SELECT * FROM users WHERE username = ? AND telegram_id = ?').get(username, String(chatId));
-
-    if (!user) {
-      await sendMessage(chatId,
-        `❌ Пользователь <b>${username}</b> не найден или не привязан к этому Telegram.\n\n` +
-        `Если вы ещё не зарегистрированы — используйте /code для регистрации.`
+    try {
+      const user = await queryOne(
+        `SELECT * FROM users WHERE username = $1 AND telegram_id = $2`,
+        [username, String(chatId)]
       );
-      return;
+
+      if (!user) {
+        await sendMessage(chatId,
+          `❌ Пользователь <b>${username}</b> не найден или не привязан к этому Telegram.\n\n` +
+          `Если вы ещё не зарегистрированы — используйте /code для регистрации.`
+        );
+        return;
+      }
+
+      const code    = String(Math.floor(100000 + Math.random() * 900000));
+      const expires = Math.floor(Date.now() / 1000) + 15 * 60;
+
+      await run(
+        `UPDATE users SET reset_code = $1, reset_expires = $2 WHERE id = $3`,
+        [code, expires, user.id]
+      );
+
+      await sendMessage(chatId,
+        `🔑 <b>Код для сброса пароля</b>\n\n` +
+        `Логин: <b>${username}</b>\n` +
+        `Код: <code>${code}</code>\n\n` +
+        `⏱ Действителен <b>15 минут</b>`
+      );
+    } catch (e) {
+      console.error('[Bot] /reset db error:', e.message);
+      await sendMessage(chatId, `❌ Ошибка. Попробуйте ещё раз.`);
     }
-
-    const code    = String(Math.floor(100000 + Math.random() * 900000));
-    const expires = Math.floor(Date.now() / 1000) + 15 * 60;
-    db.prepare('UPDATE users SET reset_code = ?, reset_expires = ? WHERE id = ?').run(code, expires, user.id);
-
-    await sendMessage(chatId,
-      `🔑 <b>Код для сброса пароля</b>\n\n` +
-      `Логин: <b>${username}</b>\n` +
-      `Код: <code>${code}</code>\n\n` +
-      `⏱ Действителен <b>15 минут</b>`
-    );
     return;
   }
 }
 
 // ── Публичный интерфейс ───────────────────────────────────────────────────────
 function getBot() {
-  // Совместимость со старым кодом — просто устанавливаем webhook
   setWebhook();
   return { username: process.env.BOT_USERNAME || '' };
 }
