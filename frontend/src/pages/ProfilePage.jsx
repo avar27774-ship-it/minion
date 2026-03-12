@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import ProductCard from '../components/ProductCard'
 import RippleGrid from '../components/RippleGrid/RippleGrid'
 import ProfileCard from '../components/ProfileCard/ProfileCard'
+import { UserCircle, Package, ShoppingCart, Calendar, Wallet, Zap, Star } from '../components/Icon'
 
 class CardBoundary extends Component {
   state = { error: false }
