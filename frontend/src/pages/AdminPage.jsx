@@ -1,10 +1,22 @@
 import React, { useState, useEffect, Component } from 'react'
 import toast from 'react-hot-toast'
 
+const adminFetch = async (path, opts = {}) => {
+  try {
+    const r = await fetch('/api/admin' + path, {
+      ...opts,
+      headers: { 'Content-Type':'application/json', 'x-admin-token': localStorage.getItem('mn_admin_token')||'', ...(opts.headers||{}) }
+    })
+    const data = await r.json()
+    if (!r.ok) return { ok: false, error: data?.error || `Ошибка ${r.status}` }
+    return data
+  } catch(e) { return { ok: false, error: e.message } }
+}
+
 const adminApi = {
-  get:  (path) => fetch('/api/admin' + path, { headers:{ 'x-admin-token': localStorage.getItem('mn_admin_token')||'' } }).then(r => r.json()).catch(() => ({})),
-  post: (path, body) => fetch('/api/admin' + path, { method:'POST', headers:{ 'Content-Type':'application/json', 'x-admin-token': localStorage.getItem('mn_admin_token')||'' }, body: JSON.stringify(body) }).then(r => r.json()).catch(() => ({})),
-  del:  (path) => fetch('/api/admin' + path, { method:'DELETE', headers:{ 'x-admin-token': localStorage.getItem('mn_admin_token')||'' } }).then(r => r.json()).catch(() => ({})),
+  get:  (path)       => adminFetch(path),
+  post: (path, body) => adminFetch(path, { method:'POST', body: JSON.stringify(body) }),
+  del:  (path)       => adminFetch(path, { method:'DELETE' }),
 }
 
 const STATUS_COLOR = { active:'var(--green)', pending:'var(--accent)', completed:'var(--t3)', disputed:'var(--red)', refunded:'#22d3ee' }
@@ -126,11 +138,18 @@ export default function AdminPage() {
   }
 
   const adjustBalance = async (id) => {
-    const amount = window.prompt('Сумма (+/-):', '0')
-    const reason = window.prompt('Причина:') || 'Admin'
-    if (!amount) return
-    const res = await adminApi.post(`/users/${id}/balance`, { amount: parseFloat(amount), reason })
-    res.ok ? (toast.success(`Баланс: $${safe(res.newBalance).toFixed(2)}`), loadTab('users')) : toast.error(res.error || 'Ошибка')
+    const amount = window.prompt('Сумма (+/-), например 10 или -5:', '')
+    if (amount === null || amount === '') return
+    const parsed = parseFloat(amount)
+    if (isNaN(parsed)) return toast.error('Введите число')
+    const reason = window.prompt('Причина:') || 'Admin adjustment'
+    const res = await adminApi.post(`/users/${id}/balance`, { amount: parsed, reason })
+    if (res.ok) {
+      toast.success(`✅ Новый баланс: $${safe(res.newBalance).toFixed(2)}`)
+      loadTab('users')
+    } else {
+      toast.error(res.error || 'Ошибка изменения баланса')
+    }
   }
 
   const verifyUser = async (id) => {
