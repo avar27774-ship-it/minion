@@ -377,10 +377,11 @@ async function monitorSuspiciousUsers() {
       (SELECT COUNT(*) FROM products p2 WHERE p2.seller_id=u.id AND p2.status='deleted') as deleted_products
     FROM users u
     WHERE u.is_banned=0 AND u.password IS NOT NULL
-    HAVING
-      (SELECT COUNT(*) FROM security_logs sl WHERE sl.user_id=u.id AND sl.event='LOGIN_FAIL' AND sl.created_at>=$1) > 10
-      OR (SELECT COUNT(*) FROM deals d WHERE (d.buyer_id=u.id OR d.seller_id=u.id) AND d.status='disputed' AND d.created_at>=$2) >= 3
-      OR (SELECT COUNT(*) FROM products p2 WHERE p2.seller_id=u.id AND p2.status='deleted') >= 3
+      AND (
+        (SELECT COUNT(*) FROM security_logs sl WHERE sl.user_id=u.id AND sl.event='LOGIN_FAIL' AND sl.created_at>=$1) > 10
+        OR (SELECT COUNT(*) FROM deals d WHERE (d.buyer_id=u.id OR d.seller_id=u.id) AND d.status='disputed' AND d.created_at>=$2) >= 3
+        OR (SELECT COUNT(*) FROM products p2 WHERE p2.seller_id=u.id AND p2.status='deleted') >= 3
+      )
     LIMIT 5
   `, [h1, h6]);
 
