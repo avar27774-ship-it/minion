@@ -77,6 +77,8 @@ export default function AdminPage() {
   const [userSearch, setUserSearch] = useState('')
   const [msgUserId, setMsgUserId]   = useState('')
   const [msgText, setMsgText]       = useState('')
+  const [secLogs, setSecLogs]       = useState([])
+  const [secFilter, setSecFilter]   = useState('')
 
   const handleLogin = async () => {
     setLoading(true)
@@ -112,6 +114,9 @@ export default function AdminPage() {
       } else if (t === 'transactions') {
         const res = await adminApi.get('/transactions')
         setTransactions(Array.isArray(res) ? res : [])
+      } else if (t === 'security') {
+        const res = await adminApi.get(`/security-logs${secFilter ? `?ip=${encodeURIComponent(secFilter)}` : ''}`)
+        setSecLogs(Array.isArray(res) ? res : [])
       }
     } catch(e) { toast.error('Ошибка загрузки: ' + e.message) }
     setLoading(false)
@@ -191,7 +196,7 @@ export default function AdminPage() {
 
   const TABS = [
     ['stats','📊 Статистика'],['users','👥 Пользователи'],['deals','🤝 Сделки'],
-    ['products','📦 Товары'],['transactions','💳 Транзакции'],['messages','💬 Сообщения']
+    ['products','📦 Товары'],['transactions','💳 Транзакции'],['security','🔐 Безопасность'],['messages','💬 Сообщения']
   ]
 
   return (
@@ -289,7 +294,7 @@ export default function AdminPage() {
                             {u.isBanned   && <span style={{ color:'var(--red)', marginLeft:6 }}>🚫</span>}
                           </div>
                           <div style={{ fontSize:12, color:'var(--t3)' }}>
-                            Баланс: ${safe(u.balance).toFixed(2)} · Рейт: {safe(u.rating, 5).toFixed(1)} · TG: {u.telegram_id||'—'}
+                            Баланс: ${safe(u.balance).toFixed(2)} · Рейт: {safe(u.rating, 5).toFixed(1)} · TG: {u.telegram_id||'—'} · IP: {u.last_ip||'—'}
                           </div>
                         </div>
                         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
@@ -397,6 +402,56 @@ export default function AdminPage() {
                   ))}
                 </div>
             }
+          </div>
+        )}
+
+
+        {/* SECURITY LOGS */}
+        {tab==='security' && !loading && (
+          <div>
+            <div style={{ display:'flex', gap:10, marginBottom:16 }}>
+              <input className="inp" placeholder="Фильтр по IP..." value={secFilter}
+                onChange={e => setSecFilter(e.target.value)} style={{ flex:1 }}
+                onKeyDown={e => e.key==='Enter' && loadTab('security')}/>
+              <button className="btn btn-secondary" onClick={() => loadTab('security')}>Поиск</button>
+              <button className="btn btn-ghost" onClick={() => { setSecFilter(''); loadTab('security') }}>Сброс</button>
+            </div>
+            <div style={{ fontSize:12, color:'var(--t3)', marginBottom:12 }}>{secLogs.length} событий</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+              {secLogs.length === 0
+                ? <div style={{ textAlign:'center', padding:40, color:'var(--t3)' }}>Логов нет</div>
+                : secLogs.map(l => {
+                    const isAlert = ['login_fail','admin_login_fail','banned_access','token_invalid'].includes(l.event)
+                    return (
+                      <div key={l.id} style={{
+                        background: isAlert ? 'rgba(231,76,60,0.06)' : 'var(--bg2)',
+                        border: `1px solid ${isAlert ? 'rgba(231,76,60,0.25)' : 'var(--border)'}`,
+                        borderRadius:10, padding:'10px 14px',
+                        display:'flex', alignItems:'center', gap:12
+                      }}>
+                        <div style={{ fontSize:16 }}>
+                          {l.event==='login_ok'?'✅':l.event==='login_fail'?'❌':l.event==='admin_login_ok'?'⚡':l.event==='admin_login_fail'?'🚨':l.event==='register'?'🆕':l.event==='banned_access'?'🚫':'🔍'}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontWeight:600, color: isAlert ? 'var(--red)' : 'var(--t1)' }}>
+                            {l.event} {l.username ? `· @${l.username}` : ''}
+                          </div>
+                          <div style={{ fontSize:11, color:'var(--t3)', marginTop:2 }}>
+                            {new Date(l.created_at * 1000).toLocaleString('ru')}
+                            {l.details ? ` · ${typeof l.details === 'string' ? l.details : JSON.stringify(l.details)}` : ''}
+                          </div>
+                        </div>
+                        <div style={{
+                          fontFamily:'monospace', fontSize:12, fontWeight:700,
+                          color: isAlert ? 'var(--red)' : 'var(--accent)',
+                          background: isAlert ? 'rgba(231,76,60,0.1)' : 'rgba(245,200,66,0.1)',
+                          padding:'4px 10px', borderRadius:6
+                        }}>{l.ip || '—'}</div>
+                      </div>
+                    )
+                  })
+              }
+            </div>
           </div>
         )}
 
