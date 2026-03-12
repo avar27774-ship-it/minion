@@ -26,10 +26,13 @@ function request(path, body) {
 async function createInvoice({ amount, orderId, comment='', hookUrl='', successUrl='' }) {
   if (!isConfigured()) return { ok:false, error:'RuKassa не настроен' };
   const shopId = SHOP_ID();
+  const description = comment || `Пополнение баланса на $${amount}`;
   try {
     const res = await request('/api/v1/create', {
       shop_id: shopId, order_id: orderId, amount: String(amount),
-      hash: sign(shopId, amount, orderId), comment,
+      hash: sign(shopId, amount, orderId),
+      comment: description,
+      data: description,
       notification_url: hookUrl, success_url: successUrl, fail_url: successUrl
     });
     if (res && res.link) return { ok:true, payUrl:res.link, invoiceId:String(res.id||orderId) };
