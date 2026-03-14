@@ -305,30 +305,149 @@ async function handleUpdate(update) {
     return;
   }
 
-  // ── Любой другой текст — AI поддержка ────────────────────────────────────
+  // ── Любой другой текст — AI отвечает ────────────────────────────────────
   try {
-    const { handleUserQuestion, isEnabled } = require('./aiAdmin');
+    const { queryOne, queryAll } = require('../models/db');
+    const https = require('https');
 
-    if (!isEnabled()) {
-      await sendMessage(chatId,
-        `ℹ️ Автоматическая поддержка временно недоступна.\n\n` +
-        `Команды:\n• /code [логин]\n• /reset [логин]\n• /help`
-      );
+    // Получаем данные пользователя
+    const user = await queryOne(
+      'SELECT * FROM users WHERE telegram_id=$1',
+      [String(chatId)]
+    ).catch(() => null);
+
+    // Строим контекст в зависимости от того кто пишет
+    let context = '';
+
+    if (user) {
+      // Данные самого пользователя
+      const myProducts = await queryAll(
+        `SELECT title, price, status FROM products WHERE seller_id=$1 AND status='active' LIMIT 10`,
+        [user.id]
+      ).catch(() => []);
+
+      const myDeals = await queryAll(
+        `SELECT d.status, p.title, d.amount FROM deals d
+         LEFT JOIN products p ON p.id=d.product_id
+         WHERE (d.buyer_id=$1 OR d.seller_id=$1) AND d.status IN ('active','pending')
+         ORDER BY d.created_at DESC LIMIT 5`,
+        [user.id]
+      ).catch(() => []);
+
+      context = `Данные пользователя @${user.username}:
+Баланс: $${parseFloat(user.balance||0).toFixed(2)}
+Заморожено в сделках: $${parseFloat(user.frozen_balance||0).toFixed(2)}
+Продаж всего: ${user.total_sales||0}
+Покупок всего: ${user.total_purchases||0}
+Рейтинг: ${user.rating||5.0}
+${myProducts.length > 0 ? `
+Мои активные товары:
+${myProducts.map(p=>`- ${p.title} ($${p.price})`).join('
+')}` : '
+Активных товаров нет'}
+${myDeals.length > 0 ? `
+Мои активные сделки:
+${myDeals.map(d=>`- ${d.title} | $${d.amount} | ${d.status}`).join('
+')}` : ''}`;
+    } else {
+      context = 'Пользователь не зарегистрирован на платформе.';
+    }
+
+    // Если спрашивают о конкретных товарах — ищем в каталоге
+    const searchWords = text.toLowerCase();
+    let catalogInfo = '';
+    if (searchWords.length > 3 && !searchWords.startsWith('/')) {
+      const found = await queryAll(
+        `SELECT title, price FROM products WHERE status='active'
+         AND (LOWER(title) LIKE $1 OR LOWER(description) LIKE $1)
+         LIMIT 5`,
+        [`%${searchWords.slice(0,30)}%`]
+      ).catch(() => []);
+      if (found.length > 0) {
+        catalogInfo = `
+Товары в каталоге по запросу "${text.slice(0,30)}":
+${found.map(p=>`- ${p.title} за $${p.price}`).join('
+')}`;
+      } else if (found.length === 0 && text.length > 5) {
+        catalogInfo = `
+Товаров по запросу "${text.slice(0,30)}" в каталоге не найдено.`;
+      }
+    }
+
+    // Запрос к Claude
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      await sendMessage(chatId, 'AI временно недоступен. Попробуйте позже.');
       return;
     }
 
-    await sendMessage(chatId, `⏳ Отвечаю...`);
-    console.log(`[Bot] Calling handleUserQuestion for ${chatId}: "${text.slice(0,50)}"`);
-    const answer = await handleUserQuestion(chatId, text);
-    console.log(`[Bot] Got answer (${answer?.length} chars): "${String(answer).slice(0,50)}"`);
-    if (answer) {
-      await sendMessage(chatId, `🤖 ${answer}`);
-    } else {
-      await sendMessage(chatId, `🤖 Привет! Чем могу помочь?`);
+    const systemPrompt = `Ты помощник маркетплейса Minions Market — платформы для продажи игровых товаров.
+Общайся как живой человек — дружелюбно и естественно по-русски.
+
+ПРАВИЛА:
+- Показывай только данные ЭТОГО пользователя (баланс, его товары, его сделки)
+- Никогда не раскрывай данные других пользователей
+- На вопросы не по теме сайта отвечай: "Я помогаю только по вопросам маркетплейса"
+- Отвечай кратко и по делу
+
+О платформе: комиссия 5%, эскроу защита, пополнение через RuKassa/CryptoPay, вывод через CryptoBot.`;
+
+    const userMessage = `${context}${catalogInfo}
+
+Сообщение: ${text}`;
+
+    const body = JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const answer = await new Promise((resolve) => {
+      const req = https.request({
+        hostname: 'api.anthropic.com',
+        path: '/v1/messages',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      }, (r) => {
+        let data = '';
+        r.on('data', d => data += d);
+        r.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            resolve(json?.content?.[0]?.text || 'Не могу ответить прямо сейчас.');
+          } catch(e) {
+            resolve('Произошла ошибка. Попробуйте ещё раз.');
+          }
+        });
+        r.on('error', () => resolve('Ошибка соединения. Попробуйте позже.'));
+      });
+      req.on('error', () => resolve('Ошибка соединения. Попробуйте позже.'));
+      req.setTimeout(30000, () => { req.destroy(); resolve('Время ожидания истекло. Попробуйте ещё раз.'); });
+      req.write(body);
+      req.end();
+    });
+
+    await sendMessage(chatId, answer);
+
+    // Уведомляем тебя только если это не ты
+    const adminId = process.env.REPORT_CHAT_ID;
+    if (adminId && String(chatId) !== String(adminId)) {
+      sendMessage(adminId,
+        `💬 <b>Вопрос @${user?.username || chatId}</b>
+❓ ${text.slice(0,100)}
+🤖 ${answer.slice(0,100)}`
+      ).catch(() => {});
     }
+
   } catch (e) {
-    console.error('[Bot] AI answer error:', e.message, e.stack?.slice(0,200));
-    await sendMessage(chatId, `😔 Произошла ошибка. Попробуйте ещё раз через минуту.`);
+    console.error('[Bot] chat error:', e.message);
+    await sendMessage(chatId, 'Произошла ошибка. Попробуйте ещё раз.');
   }
 }
 
