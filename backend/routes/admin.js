@@ -424,6 +424,51 @@ router.get('/settings', async (req, res) => {
   });
 });
 
+// ── GET /admin/chats — все диалоги пользователей ─────────────────────────────
+router.get('/chats', async (req, res) => {
+  try {
+    const dialogs = await queryAll(`
+      SELECT DISTINCT ON (LEAST(m.sender_id, m.receiver_id), GREATEST(m.sender_id, m.receiver_id))
+        LEAST(m.sender_id, m.receiver_id)    as user1_id,
+        GREATEST(m.sender_id, m.receiver_id) as user2_id,
+        u1.username as user1_username,
+        u2.username as user2_username,
+        m.text      as last_text,
+        m.created_at as last_time,
+        COUNT(m2.id) OVER (PARTITION BY LEAST(m.sender_id,m.receiver_id), GREATEST(m.sender_id,m.receiver_id)) as msg_count
+      FROM messages m
+      LEFT JOIN users u1 ON u1.id = LEAST(m.sender_id, m.receiver_id)
+      LEFT JOIN users u2 ON u2.id = GREATEST(m.sender_id, m.receiver_id)
+      LEFT JOIN messages m2 ON (
+        (m2.sender_id = m.sender_id AND m2.receiver_id = m.receiver_id) OR
+        (m2.sender_id = m.receiver_id AND m2.receiver_id = m.sender_id)
+      )
+      ORDER BY LEAST(m.sender_id,m.receiver_id), GREATEST(m.sender_id,m.receiver_id), m.created_at DESC
+    `);
+    res.json(dialogs);
+  } catch(e) { console.error(e); res.status(500).json({ error: 'Ошибка' }); }
+});
+
+// ── GET /admin/chats/:user1/:user2 — переписка между двумя юзерами ────────────
+router.get('/chats/:user1/:user2', async (req, res) => {
+  try {
+    const { user1, user2 } = req.params;
+    const [u1, u2, messages] = await Promise.all([
+      queryOne('SELECT id, username FROM users WHERE id = $1', [user1]),
+      queryOne('SELECT id, username FROM users WHERE id = $1', [user2]),
+      queryAll(`
+        SELECT m.*, u.username as sender_username
+        FROM messages m
+        LEFT JOIN users u ON u.id = m.sender_id
+        WHERE (m.sender_id = $1 AND m.receiver_id = $2)
+           OR (m.sender_id = $2 AND m.receiver_id = $1)
+        ORDER BY m.created_at ASC
+      `, [user1, user2]),
+    ]);
+    res.json({ user1: u1, user2: u2, messages });
+  } catch(e) { res.status(500).json({ error: 'Ошибка' }); }
+});
+
 router.get('/security-logs', async (req, res) => {
   try {
     const { event, ip, limit = 200 } = req.query;
