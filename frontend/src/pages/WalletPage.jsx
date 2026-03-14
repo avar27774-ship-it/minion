@@ -43,7 +43,7 @@ export default function WalletPage() {
     if (!amt || amt < 1) return toast.error('Минимум $1')
     setWorking(true)
     try {
-      const endpoint = payMethod === 'cryptocloud' ? '/wallet/deposit/cryptocloud' : '/wallet/deposit/rukassa'
+      const endpoint = payMethod === 'cryptopay' ? '/wallet/deposit/cryptopay' : '/wallet/deposit/rukassa'
       const { data } = await api.post(endpoint, { amount: amt })
       if (data.payUrl) {
         window.open(data.payUrl, '_blank')
@@ -153,8 +153,8 @@ export default function WalletPage() {
           <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, marginBottom:20 }}>↓ Пополнить баланс</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:20 }}>
             {[
-              { v:'rukassa', icon:'', label:'RuKassa', desc:'Карта РФ, СБП' },
-              { v:'cryptocloud', icon:'️', label:'CryptoCloud', desc:'USDT, BTC, ETH' },
+              { v:'rukassa',   icon:'🏦', label:'RuKassa',    desc:'Карта РФ, СБП' },
+              { v:'cryptopay', icon:'✈️', label:'CryptoPay',  desc:'USDT, TON, BTC' },
             ].map(m => (
               <button key={m.v} onClick={() => setPayMethod(m.v)} style={{
                 padding:'12px 8px', borderRadius:12, cursor:'pointer', textAlign:'center', border:'1.5px solid',
