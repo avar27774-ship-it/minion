@@ -13,7 +13,8 @@ const Sell    = lazy(() => import('./pages/SellPage'))
 const Legal   = lazy(() => import('./pages/LegalPage'))
 const Admin   = lazy(() => import('./pages/AdminPage'))
 const Profile = lazy(() => import('./pages/ProfilePage'))
-const NotFound = lazy(() => import('./pages/NotFoundPage'))
+const NotFound  = lazy(() => import('./pages/NotFoundPage'))
+const Messages  = lazy(() => import('./pages/MessagesPage'))
 import OfflineBanner from './components/OfflineBanner'
 
 // Глобальный ErrorBoundary — показывает ошибку вместо чёрного экрана
@@ -63,6 +64,8 @@ const InnerRoutes = () => (
       <Route path="/sell"        element={<Sell/>}/>
       <Route path="/profile"     element={<Profile/>}/>
       <Route path="/user/:id"    element={<Profile/>}/>
+      <Route path="/messages"       element={<Messages/>}/>
+      <Route path="/messages/:userId" element={<Messages/>}/>
       <Route path="/legal/:page" element={<Legal/>}/>
       <Route path="/contacts"    element={<Navigate to="/legal/contacts"/>}/>
       <Route path="*" element={<NotFound/>}/>
