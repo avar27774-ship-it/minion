@@ -179,11 +179,44 @@ export default function WalletPage() {
               }}>${v}</button>
             ))}
           </div>
-          <input className="inp" type="number" placeholder="Сумма в USD" value={amount} onChange={e => setAmount(e.target.value)}
-            style={{ marginBottom:16, fontSize:20, fontFamily:'var(--font-h)', fontWeight:700, textAlign:'center' }}/>
+          <input className="inp" type="number" placeholder="Минимум $2" min="2" value={amount}
+            onChange={e => setAmount(e.target.value)}
+            style={{ marginBottom:10, fontSize:20, fontFamily:'var(--font-h)', fontWeight:700, textAlign:'center' }}/>
+
+          {/* Расчёт комиссии */}
+          {parseFloat(amount) >= 2 && (() => {
+            const amt      = parseFloat(amount) || 0
+            const fee      = payMethod === 'rukassa' ? amt * 0.04 : amt * 0.01   // RuKassa ~4%, CryptoPay ~1%
+            const receive  = Math.max(0, amt - fee)
+            return (
+              <div style={{
+                background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.15)',
+                borderRadius:12, padding:'12px 16px', marginBottom:14
+              }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                  <span style={{ fontSize:13, color:'var(--t3)' }}>Сумма оплаты</span>
+                  <span style={{ fontSize:13, fontWeight:700 }}>${amt.toFixed(2)}</span>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                  <span style={{ fontSize:13, color:'var(--t3)' }}>
+                    Комиссия {payMethod === 'rukassa' ? 'RuKassa (~4%)' : 'CryptoPay (~1%)'}
+                  </span>
+                  <span style={{ fontSize:13, color:'var(--red)' }}>-${fee.toFixed(2)}</span>
+                </div>
+                <div style={{ height:1, background:'var(--border)', margin:'8px 0' }}/>
+                <div style={{ display:'flex', justifyContent:'space-between' }}>
+                  <span style={{ fontSize:14, fontWeight:700 }}>Получите на баланс</span>
+                  <span style={{ fontSize:15, fontWeight:800, color:'var(--green)' }}>${receive.toFixed(2)}</span>
+                </div>
+              </div>
+            )
+          })()}
+
           <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:10 }}>
             <button className="btn btn-ghost" onClick={() => setModal(null)}>Отмена</button>
-            <button className="btn btn-primary" onClick={deposit} disabled={working}>{working ? <Spinner/> : '↓ Пополнить'}</button>
+            <button className="btn btn-primary" onClick={deposit} disabled={working || parseFloat(amount) < 2}>
+              {working ? <Spinner/> : '↓ Пополнить'}
+            </button>
           </div>
         </Modal>
       )}
