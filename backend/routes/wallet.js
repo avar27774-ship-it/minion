@@ -7,7 +7,7 @@ const cryptopay   = require('../utils/cryptopay');
 const notify   = require('../utils/notify');
 const { sanitizeUser } = require('./auth');
 
-const MIN_DEPOSIT = 2;
+const MIN_DEPOSIT = 1;
 
 // ── GET /wallet/transactions ──────────────────────────────────────────────────
 router.get('/transactions', auth, async (req, res) => {
@@ -193,34 +193,48 @@ router.post('/withdraw', auth, async (req, res) => {
       }
     }
 
+    // ── Комиссия платформы 5% при выводе ────────────────────────────────────
+    const WITHDRAW_FEE_RATE = 0.05;
+    const fee        = Math.round(amt * WITHDRAW_FEE_RATE * 100) / 100;
+    const amtReceive = Math.round((amt - fee) * 100) / 100; // юзер получит
+    const totalDebit = amt; // списываем полную сумму с баланса
+
     await transaction(async (client) => {
       await client.query(
         `UPDATE users SET balance = balance - $1, total_withdrawn = total_withdrawn + $1 WHERE id = $2`,
-        [amt, req.userId]
+        [totalDebit, req.userId]
       );
+      // Транзакция вывода
       await client.query(`
         INSERT INTO transactions (id, user_id, type, amount, status, description, balance_before, balance_after)
         VALUES ($1,$2,'withdrawal',$3,'pending',$4,$5,$6)
-      `, [crypto.randomUUID(), req.userId, amt,
-          `Вывод ${currency} → ${address}`,
-          user.balance, parseFloat(user.balance) - amt]);
+      `, [crypto.randomUUID(), req.userId, amtReceive,
+          `Вывод ${currency} → ${address} (комиссия 5%: $${fee.toFixed(2)})`,
+          user.balance, parseFloat(user.balance) - totalDebit]);
+      // Транзакция комиссии платформы
+      await client.query(`
+        INSERT INTO transactions (id, user_id, type, amount, status, description)
+        VALUES ($1,$2,'commission',$3,'completed',$4)
+      `, [crypto.randomUUID(), req.userId, fee,
+          `Комиссия за вывод 5% от $${amt.toFixed(2)}`]);
     });
 
-    notify.notifyWithdraw(user, amt, currency).catch(() => {});
+    notify.notifyWithdraw(user, amtReceive, currency).catch(() => {});
 
     // Уведомляем тебя о каждом выводе
     if (process.env.REPORT_CHAT_ID) {
       notify.sendTg(process.env.REPORT_CHAT_ID,
         `💸 <b>Запрос на вывод</b>\n\n` +
         `👤 @${user.username}\n` +
-        `💰 Сумма: $${amt.toFixed(2)} ${currency}\n` +
+        `💰 Запрошено: $${amt.toFixed(2)} ${currency}\n` +
+        `📊 Комиссия 5%: $${fee.toFixed(2)}\n` +
+        `✅ Получит: $${amtReceive.toFixed(2)}\n` +
         `📍 IP: <code>${currentIp}</code>\n` +
-        `📊 Выведено за 24ч: $${(alreadyWithdrawn + amt).toFixed(2)} / $${DAILY_WITHDRAW_LIMIT}\n` +
         `🏦 Адрес: <code>${address}</code>`
       ).catch(() => {});
     }
 
-    res.json({ ok: true, message: `Запрос на вывод создан. Обработка в течение 24ч.` });
+    res.json({ ok: true, message: `Запрос создан. Вы получите $${amtReceive.toFixed(2)} (после комиссии 5%). Обработка в течение 24ч.` });
   } catch (e) {
     console.error('Withdraw error:', e);
     res.status(500).json({ error: 'Ошибка' });
