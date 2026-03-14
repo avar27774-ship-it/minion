@@ -223,6 +223,9 @@ cron.schedule('0 * * * *', async () => {
 // ── Hourly AI Report → Telegram ───────────────────────────────────────────────
 require('./utils/hourlyReport');
 
+// ── Site Monitor (3 раза в день) ─────────────────────────────────────────────
+require('./utils/monitor');
+
 // ── Init DB then start ────────────────────────────────────────────────────────
 const { initSchema } = require('./models/db');
 const PORT = process.env.PORT || 5000;
