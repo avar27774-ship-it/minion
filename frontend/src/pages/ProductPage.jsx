@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react'
+import useMeta from '../hooks/useMeta'
 import { Package, Star, ShoppingCart, ShieldCheck, Eye, Heart } from '../components/Icon'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
 import toast from 'react-hot-toast'
 
 export default function ProductPage() {
-  const { id }   = useParams()
+  const {
+  useMeta(product ? {
+    title: product.title,
+    description: `${product.title} за $${product.price}. Безопасная покупка через гарант на Minions Market.`,
+    keywords: `${product.title}, ${product.category}, купить`,
+  } : {})
+ id }   = useParams()
   const navigate = useNavigate()
   const { user } = useStore()
   const [product, setProduct] = useState(null)
