@@ -114,6 +114,15 @@ export default function ProductPage() {
               </div>
             </div>
           )}
+          {!isMine && seller && (
+            <Link
+              to={`/messages/${seller._id||seller.id}`}
+              className="btn btn-secondary btn-full"
+              style={{ marginBottom:10, fontSize:14 }}
+            >
+              💬 Написать продавцу
+            </Link>
+          )}
           {isMine && <div className="badge badge-yellow" style={{ marginBottom:16 }}>Ваш товар</div>}
           {product.status!=='active' && !isMine && <div className="badge badge-red" style={{ marginBottom:16 }}>Товар недоступен</div>}
 
