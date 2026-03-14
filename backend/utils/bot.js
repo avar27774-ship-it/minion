@@ -318,13 +318,17 @@ async function handleUpdate(update) {
     }
 
     await sendMessage(chatId, `⏳ Отвечаю...`);
+    console.log(`[Bot] Calling handleUserQuestion for ${chatId}: "${text.slice(0,50)}"`);
     const answer = await handleUserQuestion(chatId, text);
-    await sendMessage(chatId, `🤖 ${answer}`);
+    console.log(`[Bot] Got answer (${answer?.length} chars): "${String(answer).slice(0,50)}"`);
+    if (answer) {
+      await sendMessage(chatId, `🤖 ${answer}`);
+    } else {
+      await sendMessage(chatId, `🤖 Привет! Чем могу помочь?`);
+    }
   } catch (e) {
-    console.error('[Bot] AI answer error:', e.message);
-    await sendMessage(chatId,
-      `❓ Не понял вопрос.\n\nКоманды:\n• /code [логин]\n• /reset [логин]\n• /help`
-    );
+    console.error('[Bot] AI answer error:', e.message, e.stack?.slice(0,200));
+    await sendMessage(chatId, `😔 Произошла ошибка. Попробуйте ещё раз через минуту.`);
   }
 }
 
