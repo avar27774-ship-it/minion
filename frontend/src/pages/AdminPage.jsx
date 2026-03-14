@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Component } from 'react'
-import { Users, Package, Handshake, DollarSign, ShieldCheck, MessageCircle, CreditCard, Zap, Ban, CheckCircle, XCircle, UserCheck, UserPlus, Trash2, Send, BarChart2, AlertTriangle, RotateCcw, LogOut, Edit, Star, Clock } from '../components/Icon'
+import { Users, Package, Handshake, DollarSign, ShieldCheck, MessageCircle, CreditCard, Zap, Ban, CheckCircle, XCircle, UserCheck, Trash2, Send, BarChart2, AlertTriangle, RotateCcw, LogOut, Star, Clock, TrendingUp, Settings, Radio, Eye } from '../components/Icon'
 import toast from 'react-hot-toast'
 
 const adminFetch = async (path, opts = {}) => {
@@ -20,11 +20,10 @@ const adminApi = {
   del:  (path)       => adminFetch(path, { method:'DELETE' }),
 }
 
-const STATUS_COLOR = { active:'var(--green)', pending:'var(--accent)', completed:'var(--t3)', disputed:'var(--red)', refunded:'#22d3ee' }
-const STATUS_LABEL = { active:'Активна', pending:'Ожидание', completed:'Завершена', disputed:'Спор', refunded:'Возврат' }
+const STATUS_COLOR = { active:'var(--green)', pending:'var(--accent)', completed:'var(--t3)', disputed:'var(--red)', refunded:'#22d3ee', frozen:'var(--purple)', sold:'var(--t3)' }
+const STATUS_LABEL = { active:'Активна', pending:'Ожидание', completed:'Завершена', disputed:'Спор', refunded:'Возврат', frozen:'Заморожена', sold:'Продан' }
 
 const safe = (v, fallback = 0) => { try { return parseFloat(v) || fallback } catch { return fallback } }
-const safeStr = (v, fallback = '—') => { try { return String(v || fallback) } catch { return fallback } }
 
 class TabBoundary extends Component {
   state = { error: null }
@@ -32,7 +31,7 @@ class TabBoundary extends Component {
   render() {
     if (this.state.error) return (
       <div style={{ padding:24, background:'rgba(231,76,60,0.08)', border:'1px solid rgba(231,76,60,0.3)', borderRadius:12 }}>
-        <div style={{ color:'var(--red)', fontWeight:700, marginBottom:8 }}> Ошибка рендера</div>
+        <div style={{ color:'var(--red)', fontWeight:700, marginBottom:8 }}>Ошибка рендера</div>
         <div style={{ fontSize:12, color:'var(--t3)' }}>{this.state.error?.message}</div>
         <button className="btn btn-sm btn-secondary" style={{ marginTop:12 }} onClick={() => this.setState({ error: null })}>Попробовать снова</button>
       </div>
@@ -41,21 +40,41 @@ class TabBoundary extends Component {
   }
 }
 
-function MiniChart({ data }) {
-  if (!Array.isArray(data) || !data.length) return null
-  const max = Math.max(...data.map(d => safe(d.revenue)), 1)
+// Мини-бар-чарт
+function BarChart({ data, valueKey = 'vol', labelKey = 'day', color = 'var(--accent)' }) {
+  if (!data?.length) return null
+  const max = Math.max(...data.map(d => safe(d[valueKey])), 1)
   return (
-    <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:60 }}>
-      {data.slice(-12).map((d, i) => (
-        <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center' }}>
-          <div title={`${d.month}: $${safe(d.revenue).toFixed(2)}`} style={{
-            width:'100%', borderRadius:'4px 4px 0 0',
-            height:`${Math.max(4, (safe(d.revenue)/max)*52)}px`,
-            background:'linear-gradient(to top, rgba(245,200,66,0.8), rgba(245,200,66,0.3))',
-            cursor:'pointer'
+    <div style={{ display:'flex', alignItems:'flex-end', gap:3, height:64 }}>
+      {data.map((d, i) => (
+        <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+          <div title={`${d[labelKey]}: $${safe(d[valueKey]).toFixed(0)}`} style={{
+            width:'100%', borderRadius:'3px 3px 0 0',
+            height:`${Math.max(4, (safe(d[valueKey])/max)*56)}px`,
+            background:`linear-gradient(to top, ${color}, ${color}66)`,
+            cursor:'pointer', transition:'opacity 0.15s',
           }}/>
         </div>
       ))}
+    </div>
+  )
+}
+
+// Карточка метрики
+function MetricCard({ icon, label, value, sub, color = 'var(--accent)', trend }) {
+  return (
+    <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:'18px 20px' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+        <div style={{ color, opacity:0.8 }}>{icon}</div>
+        {trend !== undefined && (
+          <span style={{ fontSize:11, fontWeight:700, color: trend >= 0 ? 'var(--green)' : 'var(--red)' }}>
+            {trend >= 0 ? '↑' : '↓'} {Math.abs(trend)}%
+          </span>
+        )}
+      </div>
+      <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:22, color, marginBottom:2 }}>{value}</div>
+      <div style={{ fontSize:12, color:'var(--t3)', fontWeight:600 }}>{label}</div>
+      {sub && <div style={{ fontSize:11, color:'var(--t4)', marginTop:4 }}>{sub}</div>}
     </div>
   )
 }
@@ -68,62 +87,36 @@ export default function AdminPage() {
   const [authed, setAuthed]     = useState(!!localStorage.getItem('mn_admin_token'))
   const [login, setLogin]       = useState('')
   const [pass, setPass]         = useState('')
-  const [twoFaStep, setTwoFaStep] = useState(false)  // шаг 2FA
-  const [twoFaCode, setTwoFaCode] = useState('')     // код из Telegram
+  const [twoFaStep, setTwoFaStep] = useState(false)
+  const [twoFaCode, setTwoFaCode] = useState('')
   const [tab, setTab]           = useState('stats')
   const [stats, setStats]       = useState(null)
+  const [detailed, setDetailed] = useState(null)
   const [users, setUsers]       = useState([])
   const [deals, setDeals]       = useState([])
   const [products, setProducts] = useState([])
   const [transactions, setTransactions] = useState([])
+  const [secLogs, setSecLogs]   = useState([])
   const [loading, setLoading]   = useState(false)
   const [userSearch, setUserSearch] = useState('')
-  const [msgUserId, setMsgUserId]   = useState('')
-  const [msgText, setMsgText]       = useState('')
-  const [secLogs, setSecLogs]       = useState([])
-  const [secFilter, setSecFilter]   = useState('')
-
-  // Шаг 1 — запросить 2FA код в Telegram
-  const handleRequestCode = async () => {
-    setLoading(true)
-    try {
-      const res = await adminApi.post('/request-2fa', { login, password: pass })
-      if (res.ok) {
-        setTwoFaStep(true)
-        toast.success('Код отправлен в Telegram!')
-      } else {
-        toast.error(res.error || 'Неверные данные')
-      }
-    } catch { toast.error('Ошибка') }
-    setLoading(false)
-  }
-
-  // Шаг 2 — войти с кодом
-  const handleLogin = async () => {
-    setLoading(true)
-    try {
-      const res = await adminApi.post('/login', { login, password: pass, twoFaCode })
-      if (res.token) {
-        localStorage.setItem('mn_admin_token', res.token)
-        setAuthed(true)
-        toast.success('Добро пожаловать!')
-      } else if (res.need2fa) {
-        setTwoFaStep(false)
-        toast.error('Сначала запросите код')
-      } else {
-        toast.error(res.error || 'Неверный код')
-      }
-    } catch { toast.error('Ошибка') }
-    setLoading(false)
-  }
+  const [userFilter, setUserFilter] = useState('all')
+  const [productFilter, setProductFilter] = useState('all')
+  const [msgUserId, setMsgUserId] = useState('')
+  const [msgText, setMsgText]   = useState('')
+  const [secFilter, setSecFilter] = useState('')
+  const [broadcastText, setBroadcastText] = useState('')
+  const [broadcastFilter, setBroadcastFilter] = useState('all')
+  const [broadcasting, setBroadcasting] = useState(false)
+  const [settings, setSettings] = useState(null)
+  const [aiEnabled, setAiEnabled] = useState(true)
 
   const loadTab = async (t) => {
     setLoading(true)
     try {
       if (t === 'stats') {
-        const res = await adminApi.get('/stats')
-        if (res && !res.error) setStats(res)
-        else toast.error(res?.error || 'Ошибка загрузки')
+        const [base, det] = await Promise.all([adminApi.get('/stats'), adminApi.get('/stats/detailed')])
+        if (base && !base.error) setStats(base)
+        if (det && !det.error) setDetailed(det)
       } else if (t === 'users') {
         const res = await adminApi.get(`/users?search=${encodeURIComponent(userSearch)}`)
         setUsers(Array.isArray(res) ? res : [])
@@ -139,100 +132,124 @@ export default function AdminPage() {
       } else if (t === 'security') {
         const res = await adminApi.get(`/security-logs${secFilter ? `?ip=${encodeURIComponent(secFilter)}` : ''}`)
         setSecLogs(Array.isArray(res) ? res : [])
+      } else if (t === 'settings') {
+        const res = await adminApi.get('/settings')
+        if (res && !res.error) setSettings(res)
       }
-    } catch(e) { toast.error('Ошибка загрузки: ' + e.message) }
+    } catch(e) { toast.error('Ошибка: ' + e.message) }
     setLoading(false)
   }
 
   useEffect(() => { if (authed) loadTab(tab) }, [authed, tab])
 
+  // 2FA
+  const handleRequestCode = async () => {
+    setLoading(true)
+    try {
+      const res = await adminApi.post('/request-2fa', { login, password: pass })
+      if (res.ok) { setTwoFaStep(true); toast.success('Код отправлен в Telegram!') }
+      else toast.error(res.error || 'Неверные данные')
+    } catch { toast.error('Ошибка') }
+    setLoading(false)
+  }
+
+  const handleLogin = async () => {
+    setLoading(true)
+    try {
+      const res = await adminApi.post('/login', { login, password: pass, twoFaCode })
+      if (res.token) { localStorage.setItem('mn_admin_token', res.token); setAuthed(true); toast.success('Добро пожаловать!') }
+      else if (res.need2fa) { setTwoFaStep(false); toast.error('Сначала запросите код') }
+      else toast.error(res.error || 'Неверный код')
+    } catch { toast.error('Ошибка') }
+    setLoading(false)
+  }
+
+  // Пользователи
   const banUser = async (id) => {
     const hours  = window.prompt('Часов блокировки (пусто = навсегда):')
     const reason = window.prompt('Причина:') || ''
     const res = await adminApi.post(`/users/${id}/ban`, { hours: hours ? parseInt(hours) : null, reason })
     res.ok ? (toast.success('Заблокирован'), loadTab('users')) : toast.error(res.error || 'Ошибка')
   }
-
-  const unbanUser = async (id) => {
-    const res = await adminApi.post(`/users/${id}/unban`, {})
-    res.ok ? (toast.success('Разблокирован'), loadTab('users')) : toast.error(res.error || 'Ошибка')
+  const unbanUser   = async (id) => { const r = await adminApi.post(`/users/${id}/unban`, {}); r.ok ? (toast.success('Разблокирован'), loadTab('users')) : toast.error(r.error) }
+  const verifyUser  = async (id) => { const r = await adminApi.post(`/users/${id}/verify`, {}); r.ok ? (toast.success('Верифицирован'), loadTab('users')) : toast.error(r.error) }
+  const makeSubAdmin = async (id, isSub) => {
+    const r = await adminApi.post(`/users/${id}/${isSub ? 'remove-subadmin' : 'make-subadmin'}`, {})
+    r.ok ? (toast.success(isSub ? 'Права сняты' : 'Назначен субадмином'), loadTab('users')) : toast.error(r.error)
   }
-
-  const makeSubAdmin = async (id, isSubAdmin) => {
-    const endpoint = isSubAdmin ? 'remove-subadmin' : 'make-subadmin'
-    const res = await adminApi.post(`/users/${id}/${endpoint}`, {})
-    res.ok ? (toast.success(isSubAdmin ? 'Права сняты' : 'Назначен'), loadTab('users')) : toast.error(res.error || 'Ошибка')
-  }
-
   const adjustBalance = async (id) => {
-    const amount = window.prompt('Сумма (+/-), например 10 или -5:', '')
-    if (amount === null || amount === '') return
+    const amount = window.prompt('Сумма (+/-):')
+    if (!amount) return
     const parsed = parseFloat(amount)
     if (isNaN(parsed)) return toast.error('Введите число')
     const reason = window.prompt('Причина:') || 'Admin adjustment'
-    const res = await adminApi.post(`/users/${id}/balance`, { amount: parsed, reason })
-    if (res.ok) {
-      toast.success(`✓ Новый баланс: $${safe(res.newBalance).toFixed(2)}`)
-      loadTab('users')
-    } else {
-      toast.error(res.error || 'Ошибка изменения баланса')
-    }
+    const r = await adminApi.post(`/users/${id}/balance`, { amount: parsed, reason })
+    r.ok ? (toast.success(`Новый баланс: $${safe(r.newBalance).toFixed(2)}`), loadTab('users')) : toast.error(r.error)
   }
 
-  const verifyUser = async (id) => {
-    const res = await adminApi.post(`/users/${id}/verify`, {})
-    res.ok ? (toast.success('Верифицирован'), loadTab('users')) : toast.error(res.error || 'Ошибка')
-  }
+  // Товары
+  const deleteProduct  = async (id) => { if (!window.confirm('Удалить?')) return; const r = await adminApi.del(`/products/${id}`); r.ok ? (toast.success('Удалён'), loadTab('products')) : toast.error(r.error) }
+  const promoteProduct = async (id) => { const r = await adminApi.post(`/products/${id}/promote`, { hours: 24 }); r.ok ? (toast.success('Продвинут на 24ч!'), loadTab('products')) : toast.error(r.error) }
 
-  const deleteProduct = async (id) => {
-    if (!window.confirm('Удалить товар?')) return
-    const res = await adminApi.del(`/products/${id}`)
-    res.ok ? (toast.success('Удалён'), loadTab('products')) : toast.error(res.error || 'Ошибка')
-  }
-
+  // Споры
   const resolveDispute = async (dealId, decision) => {
     const note = window.prompt('Примечание:') || ''
-    const res  = await adminApi.post(`/deals/${dealId}/resolve`, { decision, note })
-    res.ok
-      ? (toast.success(decision === 'complete' ? 'Решено в пользу продавца' : 'Возврат покупателю'), loadTab('deals'))
-      : toast.error(res.error || 'Ошибка')
+    const r = await adminApi.post(`/deals/${dealId}/resolve`, { decision, note })
+    r.ok ? (toast.success(decision === 'complete' ? '✓ Продавцу' : '↩ Покупателю'), loadTab('deals')) : toast.error(r.error)
   }
 
+  // Сообщение юзеру
+  const sendMessage = async () => {
+    if (!msgText.trim() || !msgUserId.trim()) return toast.error('Заполните поля')
+    const r = await adminApi.post('/message', { username: msgUserId.trim(), text: msgText.trim() })
+    r.ok ? (toast.success('Отправлено!'), setMsgText('')) : toast.error(r.error)
+  }
+
+  // Рассылка
+  const sendBroadcast = async () => {
+    if (!broadcastText.trim()) return toast.error('Введите текст')
+    if (!window.confirm(`Отправить всем (${broadcastFilter})?`)) return
+    setBroadcasting(true)
+    const r = await adminApi.post('/broadcast', { text: broadcastText, filter: broadcastFilter })
+    r.ok ? toast.success(`Отправлено: ${r.sent} из ${r.total}`) : toast.error(r.error)
+    setBroadcasting(false)
+  }
+
+  // Фильтрация
+  const filteredUsers = users.filter(u => {
+    if (userFilter === 'banned')   return u.isBanned
+    if (userFilter === 'verified') return u.isVerified
+    if (userFilter === 'sellers')  return (u.totalSales||0) > 0
+    if (userFilter === 'buyers')   return (u.totalPurchases||0) > 0
+    return true
+  })
+
+  const filteredProducts = products.filter(p => {
+    if (productFilter === 'active')  return p.status === 'active'
+    if (productFilter === 'frozen')  return p.status === 'frozen'
+    if (productFilter === 'promoted') return p.is_promoted
+    return true
+  })
+
   if (!authed) return (
-    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20,
-      background:'radial-gradient(ellipse 60% 60% at 50% 0%, rgba(245,200,66,0.06), var(--bg))' }}>
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20, background:'radial-gradient(ellipse 60% 60% at 50% 0%, rgba(245,200,66,0.06), var(--bg))' }}>
       <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:24, padding:36, width:'100%', maxWidth:380 }}>
         <div style={{ textAlign:'center', marginBottom:28 }}>
-          <div style={{ fontSize:40, marginBottom:8 }}><Zap size={36} strokeWidth={1.5}/></div>
+          <div style={{ marginBottom:8 }}><Zap size={36} strokeWidth={1.5}/></div>
           <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:22 }}>Панель администратора</div>
         </div>
         {!twoFaStep ? (
           <>
             <input className="inp" placeholder="Логин" value={login} onChange={e => setLogin(e.target.value)} style={{ marginBottom:10 }}/>
-            <input className="inp" type="password" placeholder="Пароль" value={pass}
-              onChange={e => setPass(e.target.value)}
-              onKeyDown={e => e.key==='Enter' && handleRequestCode()}
-              style={{ marginBottom:16 }}/>
-            <button className="btn btn-primary btn-full" onClick={handleRequestCode} disabled={loading}>
-              {loading ? '...' : 'Получить код →'}
-            </button>
+            <input className="inp" type="password" placeholder="Пароль" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key==='Enter' && handleRequestCode()} style={{ marginBottom:16 }}/>
+            <button className="btn btn-primary btn-full" onClick={handleRequestCode} disabled={loading}>{loading ? '...' : 'Получить код →'}</button>
           </>
         ) : (
           <>
-            <div style={{ textAlign:'center', marginBottom:16, fontSize:13, color:'var(--t3)', lineHeight:1.6 }}>
-              📱 Код отправлен в <b style={{color:'var(--t2)'}}>Telegram</b><br/>Введите 6-значный код
-            </div>
-            <input className="inp" placeholder="000000" value={twoFaCode}
-              onChange={e => setTwoFaCode(e.target.value.replace(/\D/g,'').slice(0,6))}
-              onKeyDown={e => e.key==='Enter' && handleLogin()}
-              style={{ marginBottom:12, textAlign:'center', fontSize:24, fontFamily:'var(--font-h)', fontWeight:800, letterSpacing:8 }}/>
-            <button className="btn btn-primary btn-full" onClick={handleLogin} disabled={loading || twoFaCode.length < 6}>
-              {loading ? '...' : 'Войти →'}
-            </button>
-            <button className="btn btn-ghost btn-full" onClick={() => { setTwoFaStep(false); setTwoFaCode('') }}
-              style={{ marginTop:8, fontSize:12 }}>
-              ← Назад
-            </button>
+            <div style={{ textAlign:'center', marginBottom:16, fontSize:13, color:'var(--t3)', lineHeight:1.6 }}>📱 Код в <b style={{color:'var(--t2)'}}>Telegram</b> — введите 6 цифр</div>
+            <input className="inp" placeholder="000000" value={twoFaCode} onChange={e => setTwoFaCode(e.target.value.replace(/\D/g,'').slice(0,6))} onKeyDown={e => e.key==='Enter' && handleLogin()} style={{ marginBottom:12, textAlign:'center', fontSize:24, fontFamily:'var(--font-h)', fontWeight:800, letterSpacing:8 }}/>
+            <button className="btn btn-primary btn-full" onClick={handleLogin} disabled={loading || twoFaCode.length < 6}>{loading ? '...' : 'Войти →'}</button>
+            <button className="btn btn-ghost btn-full" onClick={() => { setTwoFaStep(false); setTwoFaCode('') }} style={{ marginTop:8, fontSize:12 }}>← Назад</button>
           </>
         )}
       </div>
@@ -240,31 +257,40 @@ export default function AdminPage() {
   )
 
   const TABS = [
-    ['stats',    <BarChart2 size={14}/>,    'Статистика'],
-    ['users',    <Users size={14}/>,       'Пользователи'],
-    ['deals',    <Handshake size={14}/>,    'Сделки'],
-    ['products', <Package size={14}/>,      'Товары'],
-    ['transactions', <CreditCard size={14}/>, 'Транзакции'],
-    ['security', <ShieldCheck size={14}/>,  'Безопасность'],
-    ['messages', <MessageCircle size={14}/>, 'Сообщения']
+    ['stats',        <BarChart2 size={14}/>,     'Статистика'],
+    ['users',        <Users size={14}/>,         'Пользователи'],
+    ['deals',        <Handshake size={14}/>,     'Сделки'],
+    ['products',     <Package size={14}/>,       'Товары'],
+    ['transactions', <CreditCard size={14}/>,    'Транзакции'],
+    ['security',     <ShieldCheck size={14}/>,   'Безопасность'],
+    ['broadcast',    <Radio size={14}/>,         'Рассылка'],
+    ['messages',     <MessageCircle size={14}/>, 'Сообщения'],
+    ['settings',     <Settings size={14}/>,      'Настройки'],
   ]
 
   return (
     <div style={{ maxWidth:1280, margin:'0 auto', padding:'24px 20px', minHeight:'100vh' }}>
+
+      {/* Шапка */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
-        <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:24 }}><Zap size={20} strokeWidth={1.75} style={{marginRight:8}}/> Панель администратора</h1>
-        <button className="btn btn-danger btn-sm" onClick={() => { localStorage.removeItem('mn_admin_token'); setAuthed(false) }} style={{display:'flex',alignItems:'center',gap:6}}><LogOut size={14} strokeWidth={2}/> Выйти</button>
+        <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:22, display:'flex', alignItems:'center', gap:8 }}>
+          <Zap size={20} strokeWidth={1.75}/> Панель администратора
+        </h1>
+        <button className="btn btn-danger btn-sm" onClick={() => { localStorage.removeItem('mn_admin_token'); setAuthed(false) }} style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <LogOut size={14} strokeWidth={2}/> Выйти
+        </button>
       </div>
 
+      {/* Вкладки */}
       <div style={{ display:'flex', gap:6, marginBottom:24, flexWrap:'wrap' }}>
-        {TABS.map(([v,icon,l]) => (
+        {TABS.map(([v, icon, l]) => (
           <button key={v} onClick={() => setTab(v)} style={{
-            padding:'8px 14px', borderRadius:8, border:'1px solid', cursor:'pointer',
-            fontSize:13, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
             display:'flex', alignItems:'center', gap:6,
+            padding:'8px 14px', borderRadius:10, border:'1px solid', cursor:'pointer',
+            fontSize:13, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
             background: tab===v ? 'rgba(245,200,66,0.12)' : 'transparent',
             borderColor: tab===v ? 'rgba(245,200,66,0.4)' : 'var(--border)',
-            color: tab===v ? 'var(--accent)' : 'var(--t2)'
+            color: tab===v ? 'var(--accent)' : 'var(--t2)',
           }}>{icon}{l}</button>
         ))}
       </div>
@@ -273,107 +299,194 @@ export default function AdminPage() {
 
       <TabBoundary key={tab}>
 
-        {/* STATS */}
-        {tab==='stats' && !loading && (
+        {/* ── СТАТИСТИКА ── */}
+        {tab === 'stats' && !loading && (
           <div>
-            {stats ? (
-              <>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:28 }}>
-                  {[
-                    ['Пользователей', stats.users ?? '—', <Users size={28} strokeWidth={1.5}/>],
-                    ['Активных товаров', stats.products ?? '—', <Package size={28} strokeWidth={1.5}/>],
-                    ['Всего сделок', stats.deals ?? '—', <Handshake size={28} strokeWidth={1.5}/>],
-                    ['Доход', '$' + safe(stats.revenue).toFixed(2), <DollarSign size={28} strokeWidth={1.5}/>],
-                  ].map(([l,v,i]) => (
-                    <div key={l} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:20, textAlign:'center' }}>
-                      <div style={{ fontSize:28, marginBottom:8 }}>{i}</div>
-                      <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:24, color:'var(--accent)' }}>{v}</div>
-                      <div style={{ color:'var(--t3)', fontSize:12, marginTop:4 }}>{l}</div>
-                    </div>
-                  ))}
-                </div>
-                {Array.isArray(stats.monthlyRevenue) && stats.monthlyRevenue.length > 0 && (
-                  <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:20, marginBottom:28 }}>
-                    <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:15, marginBottom:12 }}> Доход по месяцам</div>
-                    <MiniChart data={stats.monthlyRevenue}/>
-                  </div>
-                )}
-                <h2 style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:18, marginBottom:14 }}>Последние сделки</h2>
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  {Array.isArray(stats.recentDeals) && stats.recentDeals.map(d => (
-                    <div key={d._id||d.id} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 16px', display:'flex', gap:16, alignItems:'center' }}>
-                      <div style={{ flex:1, fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.product?.title || '—'}</div>
-                      <div style={{ fontSize:12, color:'var(--t3)' }}>@{d.buyer?.username||'?'} → @{d.seller?.username||'?'}</div>
-                      <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--accent)' }}>${safe(d.amount).toFixed(2)}</div>
-                      <span style={{ fontSize:11, fontWeight:700, color: STATUS_COLOR[d.status]||'var(--t3)' }}>{STATUS_LABEL[d.status]||d.status}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div style={{ textAlign:'center', padding:40, color:'var(--t3)' }}>Нет данных</div>
+            {/* Алерты */}
+            {detailed?.activeDisputes > 0 && (
+              <div style={{ background:'rgba(231,76,60,0.08)', border:'1px solid rgba(231,76,60,0.3)', borderRadius:12, padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:10, color:'var(--red)', fontWeight:700, fontSize:13 }}>
+                <AlertTriangle size={16}/> {detailed.activeDisputes} спора требуют рассмотрения!
+              </div>
             )}
+            {detailed?.pendingWithdrawals?.count > 0 && (
+              <div style={{ background:'rgba(245,200,66,0.08)', border:'1px solid rgba(245,200,66,0.3)', borderRadius:12, padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:10, color:'var(--accent)', fontWeight:700, fontSize:13 }}>
+                <Clock size={16}/> {detailed.pendingWithdrawals.count} заявок на вывод на ${safe(detailed.pendingWithdrawals.vol).toFixed(2)}
+              </div>
+            )}
+
+            {/* Основные метрики */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:20 }}>
+              <MetricCard icon={<Users size={22}/>} label="Всего юзеров" value={stats?.users ?? '—'} sub={`+${detailed?.users?.today||0} сегодня`}/>
+              <MetricCard icon={<Package size={22}/>} label="Активных товаров" value={stats?.products ?? '—'}/>
+              <MetricCard icon={<Handshake size={22}/>} label="Всего сделок" value={stats?.deals ?? '—'} sub={`${detailed?.deals?.today||0} сегодня`}/>
+              <MetricCard icon={<DollarSign size={22}/>} label="Доход платформы" value={`$${safe(stats?.revenue).toFixed(2)}`} sub={`$${safe(detailed?.revenue?.today).toFixed(2)} сегодня`}/>
+            </div>
+
+            {/* Периоды */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14, marginBottom:24 }}>
+              {[
+                ['За сегодня', detailed?.revenue?.today, detailed?.deals?.today, detailed?.users?.today],
+                ['За неделю',  detailed?.revenue?.week,  detailed?.deals?.week,  detailed?.users?.week],
+                ['За месяц',   detailed?.revenue?.month, detailed?.deals?.month, detailed?.users?.month],
+              ].map(([label, rev, deals, users]) => (
+                <div key={label} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:'16px 18px' }}>
+                  <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:12, color:'var(--t3)', letterSpacing:'0.1em', marginBottom:12 }}>{label.toUpperCase()}</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between' }}>
+                      <span style={{ fontSize:13, color:'var(--t3)' }}>Доход</span>
+                      <span style={{ fontSize:13, fontWeight:700, color:'var(--green)' }}>${safe(rev).toFixed(2)}</span>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between' }}>
+                      <span style={{ fontSize:13, color:'var(--t3)' }}>Сделок</span>
+                      <span style={{ fontSize:13, fontWeight:700 }}>{deals||0}</span>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between' }}>
+                      <span style={{ fontSize:13, color:'var(--t3)' }}>Новых юзеров</span>
+                      <span style={{ fontSize:13, fontWeight:700 }}>{users||0}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* График по дням */}
+            {detailed?.dailyStats?.length > 0 && (
+              <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:'18px 20px', marginBottom:24 }}>
+                <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:14, marginBottom:14 }}>📈 Сделки за 30 дней</div>
+                <BarChart data={detailed.dailyStats} valueKey="deals" labelKey="day" color="var(--purple)"/>
+              </div>
+            )}
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:24 }}>
+              {/* Топ продавцы */}
+              <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:'18px 20px' }}>
+                <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:14, marginBottom:14 }}>🏆 Топ продавцы (неделя)</div>
+                {detailed?.topSellers?.length > 0 ? detailed.topSellers.map((s, i) => (
+                  <div key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom: i < detailed.topSellers.length-1 ? '1px solid var(--border)' : 'none' }}>
+                    <span style={{ fontSize:16 }}>{['🥇','🥈','🥉','4️⃣','5️⃣'][i]}</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:600 }}>@{s.username}</div>
+                      <div style={{ fontSize:11, color:'var(--t3)' }}>{s.sales} сделок</div>
+                    </div>
+                    <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--green)', fontSize:13 }}>${safe(s.earned).toFixed(0)}</div>
+                  </div>
+                )) : <div style={{ color:'var(--t3)', fontSize:13 }}>Нет данных</div>}
+              </div>
+
+              {/* Топ товары */}
+              <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:'18px 20px' }}>
+                <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:14, marginBottom:14 }}>🔥 Топ товары</div>
+                {detailed?.topProducts?.length > 0 ? detailed.topProducts.map((p, i) => (
+                  <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom: i < detailed.topProducts.length-1 ? '1px solid var(--border)' : 'none' }}>
+                    <span style={{ fontSize:16 }}>{['🥇','🥈','🥉','4️⃣','5️⃣'][i]}</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.title}</div>
+                      <div style={{ fontSize:11, color:'var(--t3)' }}>{p.sales} продаж · {p.views} просмотров</div>
+                    </div>
+                    <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--accent)', fontSize:13 }}>${safe(p.price).toFixed(0)}</div>
+                  </div>
+                )) : <div style={{ color:'var(--t3)', fontSize:13 }}>Нет данных</div>}
+              </div>
+            </div>
+
+            {/* Новые пользователи */}
+            <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:'18px 20px' }}>
+              <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:14, marginBottom:14 }}>👥 Последние регистрации</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {detailed?.newUsers?.map(u => (
+                  <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+                    <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg,var(--purple),var(--accent))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, flexShrink:0 }}>
+                      {(u.username||'?')[0].toUpperCase()}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:600 }}>@{u.username}</div>
+                      <div style={{ fontSize:11, color:'var(--t3)' }}>{new Date((u.created_at||0)*1000).toLocaleDateString('ru')}</div>
+                    </div>
+                    <div style={{ fontSize:12, color:'var(--t3)' }}>↑{u.total_sales||0} ↓{u.total_purchases||0}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
-        {/* USERS */}
-        {tab==='users' && !loading && (
+        {/* ── ПОЛЬЗОВАТЕЛИ ── */}
+        {tab === 'users' && !loading && (
           <div>
-            <div style={{ display:'flex', gap:10, marginBottom:16 }}>
+            <div style={{ display:'flex', gap:10, marginBottom:14, flexWrap:'wrap' }}>
               <input className="inp" placeholder="Поиск по логину или TG ID..." value={userSearch}
-                onChange={e => setUserSearch(e.target.value)} style={{ flex:1 }}
+                onChange={e => setUserSearch(e.target.value)} style={{ flex:1, minWidth:200 }}
                 onKeyDown={e => e.key==='Enter' && loadTab('users')}/>
               <button className="btn btn-secondary" onClick={() => loadTab('users')}>Найти</button>
             </div>
-            <div style={{ fontSize:12, color:'var(--t3)', marginBottom:12 }}>{users.length} пользователей</div>
-            {users.length === 0
-              ? <div style={{ textAlign:'center', padding:40, color:'var(--t3)' }}>Пользователей нет</div>
-              : <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  {users.map(u => {
-                    const uid = u._id || u.id
+            {/* Фильтры */}
+            <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
+              {[['all','Все'],['banned','Забаненные'],['verified','Верифицированные'],['sellers','Продавцы'],['buyers','Покупатели']].map(([v,l]) => (
+                <button key={v} onClick={() => setUserFilter(v)} style={{
+                  padding:'6px 12px', borderRadius:8, border:'1px solid', cursor:'pointer', fontSize:12, fontWeight:700,
+                  background: userFilter===v ? 'rgba(245,200,66,0.12)' : 'var(--bg3)',
+                  borderColor: userFilter===v ? 'rgba(245,200,66,0.4)' : 'var(--border)',
+                  color: userFilter===v ? 'var(--accent)' : 'var(--t3)',
+                }}>{l}</button>
+              ))}
+              <span style={{ fontSize:12, color:'var(--t3)', padding:'6px 0' }}>{filteredUsers.length} юзеров</span>
+            </div>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {filteredUsers.length === 0
+                ? <div style={{ textAlign:'center', padding:40, color:'var(--t3)' }}>Нет пользователей</div>
+                : filteredUsers.map(u => {
+                    const uid = u.id || u._id
                     return (
-                      <div key={uid} style={{
-                        background:'var(--bg2)',
-                        border:`1px solid ${u.isBanned ? 'rgba(231,76,60,0.3)' : 'var(--border)'}`,
-                        borderRadius:12, padding:'14px 16px', display:'flex', alignItems:'center', gap:12
-                      }}>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontWeight:600, fontSize:14 }}>
-                            @{u.username||'—'}
-                            {u.isAdmin    && <Zap size={13} strokeWidth={2} style={{ color:'var(--accent)', marginLeft:6 }}/>}
-                            {u.isVerified && <CheckCircle size={13} strokeWidth={2} style={{ color:'var(--green)', marginLeft:6 }}/>}
-                            {u.isBanned   && <Ban size={13} strokeWidth={2} style={{ color:'var(--red)', marginLeft:6 }}/>}
+                      <div key={uid} style={{ background:'var(--bg2)', border:`1px solid ${u.isBanned ? 'rgba(231,76,60,0.3)' : 'var(--border)'}`, borderRadius:14, padding:'14px 16px' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                          <div style={{ width:40, height:40, borderRadius:10, background:'linear-gradient(135deg,var(--purple),var(--accent))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:700, flexShrink:0 }}>
+                            {(u.username||'?')[0].toUpperCase()}
                           </div>
-                          <div style={{ fontSize:12, color:'var(--t3)' }}>
-                            Баланс: ${safe(u.balance).toFixed(2)} · Рейт: {safe(u.rating, 5).toFixed(1)} · TG: {u.telegram_id||'—'} · IP: {u.last_ip||'—'}
+                          <div style={{ flex:1, minWidth:120 }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                              <span style={{ fontWeight:700, fontSize:14 }}>@{u.username||'—'}</span>
+                              {u.isVerified  && <span className="badge badge-green" style={{fontSize:10}}>✓ Верифицирован</span>}
+                              {u.isBanned    && <span className="badge badge-red" style={{fontSize:10}}>🚫 Забанен</span>}
+                              {u.isSubAdmin  && <span className="badge badge-purple" style={{fontSize:10}}>⚡ Субадмин</span>}
+                            </div>
+                            <div style={{ fontSize:12, color:'var(--t3)', marginTop:2 }}>
+                              Баланс: <b style={{color:'var(--accent)'}}>${safe(u.balance).toFixed(2)}</b>
+                              {' · '}↑{u.totalSales||0} ↓{u.totalPurchases||0}
+                              {' · '}★{safe(u.rating||5).toFixed(1)}
+                              {u.telegram_id ? ' · TG ✓' : ' · TG ✗'}
+                            </div>
+                          </div>
+                          {/* Кнопки действий */}
+                          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                            <button className="btn btn-sm btn-secondary" onClick={() => adjustBalance(uid)} title="Изменить баланс">💰</button>
+                            {!u.isVerified && <button className="btn btn-sm btn-secondary" onClick={() => verifyUser(uid)} title="Верифицировать"><UserCheck size={13}/></button>}
+                            <button className="btn btn-sm btn-secondary" onClick={() => makeSubAdmin(uid, u.isSubAdmin)} title={u.isSubAdmin ? 'Снять субадмина' : 'Сделать субадмином'}><Zap size={13}/></button>
+                            {u.isBanned
+                              ? <button className="btn btn-sm btn-secondary" onClick={() => unbanUser(uid)} style={{color:'var(--green)'}}><CheckCircle size={13}/></button>
+                              : <button className="btn btn-sm btn-danger" onClick={() => banUser(uid)}><Ban size={13}/></button>
+                            }
                           </div>
                         </div>
-                        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                          <button className="btn btn-sm btn-secondary" onClick={() => adjustBalance(uid)} title="Изменить баланс"><DollarSign size={13} strokeWidth={2}/></button>
-                          {!u.isVerified && <button className="btn btn-sm btn-secondary" onClick={() => verifyUser(uid)} title="Верифицировать"><UserCheck size={13} strokeWidth={2}/></button>}
-                          <button className="btn btn-sm btn-secondary" onClick={() => makeSubAdmin(uid, u.isSubAdmin)}
-                            title={u.isSubAdmin ? 'Снять права' : 'Назначить помощником'}
-                            style={{ color: u.isSubAdmin ? 'var(--accent)' : 'var(--t3)' }}><Zap size={13} strokeWidth={2}/></button>
-                          {u.isBanned
-                            ? <button className="btn btn-sm btn-secondary" onClick={() => unbanUser(uid)} title="Разблокировать"><CheckCircle size={13} strokeWidth={2}/></button>
-                            : <button className="btn btn-sm btn-danger" onClick={() => banUser(uid)} title="Заблокировать"><Ban size={13} strokeWidth={2}/></button>
-                          }
-                          <button className="btn btn-sm btn-ghost" onClick={() => { setMsgUserId(uid); setTab('messages') }} title="Отправить сообщение"><MessageCircle size={13} strokeWidth={2}/></button>
-                        </div>
+                        {u.isBanned && u.banReason && (
+                          <div style={{ fontSize:12, color:'var(--red)', marginTop:8, paddingTop:8, borderTop:'1px solid var(--border)' }}>
+                            Причина: {u.banReason}
+                          </div>
+                        )}
                       </div>
                     )
-                  })}
-                </div>
-            }
+                  })
+              }
+            </div>
           </div>
         )}
 
-        {/* DEALS */}
-        {tab==='deals' && !loading && (
+        {/* ── СДЕЛКИ ── */}
+        {tab === 'deals' && !loading && (
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {deals.filter(d => d.status==='disputed').length > 0 && (
-              <div style={{ background:'rgba(231,76,60,0.06)', border:'1px solid rgba(231,76,60,0.3)', borderRadius:12, padding:'10px 16px', marginBottom:8, fontSize:13, color:'var(--red)', fontWeight:700 }}>
-                !️ {deals.filter(d => d.status==='disputed').length} спора требуют рассмотрения
+              <div style={{ background:'rgba(231,76,60,0.06)', border:'1px solid rgba(231,76,60,0.3)', borderRadius:12, padding:'12px 16px', marginBottom:8, fontSize:13, color:'var(--red)', fontWeight:700, display:'flex', alignItems:'center', gap:8 }}>
+                <AlertTriangle size={16}/> {deals.filter(d=>d.status==='disputed').length} спора требуют рассмотрения!
               </div>
             )}
             {deals.length === 0
@@ -381,24 +494,28 @@ export default function AdminPage() {
               : deals.map(d => {
                   const did = d._id || d.id
                   return (
-                    <div key={did} style={{
-                      background:'var(--bg2)',
-                      border:`1px solid ${d.status==='disputed' ? 'rgba(231,76,60,0.3)' : 'var(--border)'}`,
-                      borderRadius:12, padding:'14px 16px'
-                    }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                        <div style={{ flex:1 }}>
+                    <div key={did} style={{ background:'var(--bg2)', border:`1px solid ${d.status==='disputed' ? 'rgba(231,76,60,0.3)' : 'var(--border)'}`, borderRadius:14, padding:'14px 16px' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                        <div style={{ flex:1, minWidth:150 }}>
                           <div style={{ fontWeight:600, fontSize:14 }}>{d.product?.title||'—'}</div>
-                          <div style={{ fontSize:12, color:'var(--t3)', marginTop:2 }}>@{d.buyer?.username||'?'} → @{d.seller?.username||'?'}</div>
-                          {d.disputeReason && <div style={{ fontSize:12, color:'var(--red)', marginTop:4 }}>Спор: {d.disputeReason}</div>}
+                          <div style={{ fontSize:12, color:'var(--t3)', marginTop:2 }}>
+                            @{d.buyer?.username||'?'} → @{d.seller?.username||'?'}
+                          </div>
+                          {d.disputeReason && <div style={{ fontSize:12, color:'var(--red)', marginTop:4 }}>💬 {d.disputeReason}</div>}
                         </div>
-                        <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--accent)' }}>${safe(d.amount).toFixed(2)}</div>
-                        <span style={{ fontSize:11, fontWeight:700, color: STATUS_COLOR[d.status]||'var(--t3)' }}>{STATUS_LABEL[d.status]||d.status}</span>
+                        <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--accent)', fontSize:15 }}>${safe(d.amount).toFixed(2)}</div>
+                        <span style={{ fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:6, background:`${STATUS_COLOR[d.status]||'var(--t3)'}22`, color: STATUS_COLOR[d.status]||'var(--t3)' }}>
+                          {STATUS_LABEL[d.status]||d.status}
+                        </span>
                       </div>
                       {d.status==='disputed' && (
-                        <div style={{ display:'flex', gap:8, marginTop:10 }}>
-                          <button className="btn btn-sm btn-primary" onClick={() => resolveDispute(did,'complete')} style={{display:'flex',alignItems:'center',gap:4}}><CheckCircle size={13}/> Продавцу</button>
-                          <button className="btn btn-sm btn-danger" onClick={() => resolveDispute(did,'refund')} style={{display:'flex',alignItems:'center',gap:4}}><RotateCcw size={13}/> Покупателю</button>
+                        <div style={{ display:'flex', gap:8, marginTop:12 }}>
+                          <button className="btn btn-sm btn-primary" onClick={() => resolveDispute(did,'complete')} style={{display:'flex',alignItems:'center',gap:4}}>
+                            <CheckCircle size={13}/> Продавцу
+                          </button>
+                          <button className="btn btn-sm btn-danger" onClick={() => resolveDispute(did,'refund')} style={{display:'flex',alignItems:'center',gap:4}}>
+                            <RotateCcw size={13}/> Покупателю
+                          </button>
                         </div>
                       )}
                     </div>
@@ -408,62 +525,81 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* PRODUCTS */}
-        {tab==='products' && !loading && (
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {products.length === 0
-              ? <div style={{ textAlign:'center', padding:40, color:'var(--t3)' }}>Товаров нет</div>
-              : products.map(p => {
-                  const pid = p._id || p.id
-                  return (
-                    <div key={pid} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px', display:'flex', alignItems:'center', gap:12 }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:600, fontSize:14 }}>{p.title||'—'}</div>
-                        <div style={{ fontSize:12, color:'var(--t3)' }}>@{p.seller?.username||'?'} · ${safe(p.price).toFixed(2)} · {p.category||'—'}</div>
+        {/* ── ТОВАРЫ ── */}
+        {tab === 'products' && !loading && (
+          <div>
+            <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
+              {[['all','Все'],['active','Активные'],['frozen','Замороженные'],['promoted','На продвижении']].map(([v,l]) => (
+                <button key={v} onClick={() => setProductFilter(v)} style={{
+                  padding:'6px 12px', borderRadius:8, border:'1px solid', cursor:'pointer', fontSize:12, fontWeight:700,
+                  background: productFilter===v ? 'rgba(245,200,66,0.12)' : 'var(--bg3)',
+                  borderColor: productFilter===v ? 'rgba(245,200,66,0.4)' : 'var(--border)',
+                  color: productFilter===v ? 'var(--accent)' : 'var(--t3)',
+                }}>{l}</button>
+              ))}
+              <span style={{ fontSize:12, color:'var(--t3)', padding:'6px 0' }}>{filteredProducts.length} товаров</span>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {filteredProducts.length === 0
+                ? <div style={{ textAlign:'center', padding:40, color:'var(--t3)' }}>Товаров нет</div>
+                : filteredProducts.map(p => {
+                    const pid = p._id || p.id
+                    return (
+                      <div key={pid} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:'14px 16px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                        <div style={{ flex:1, minWidth:150 }}>
+                          <div style={{ fontWeight:600, fontSize:14 }}>{p.title||'—'}</div>
+                          <div style={{ fontSize:12, color:'var(--t3)', marginTop:2 }}>
+                            @{p.seller?.username||'?'} · <b style={{color:'var(--accent)'}}>${safe(p.price).toFixed(2)}</b> · {p.category||'—'}
+                            {p.views > 0 && <> · <Eye size={11} style={{display:'inline'}}/> {p.views}</>}
+                          </div>
+                        </div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          {p.is_promoted && <span style={{ fontSize:10, fontWeight:700, color:'var(--accent)', background:'rgba(245,200,66,0.12)', padding:'3px 8px', borderRadius:6 }}>🚀 Топ</span>}
+                          <span style={{ fontSize:11, fontWeight:700, color: STATUS_COLOR[p.status]||'var(--t3)' }}>{p.status}</span>
+                          <button className="btn btn-sm btn-secondary" onClick={() => promoteProduct(pid)} title="Продвинуть">🚀</button>
+                          <button className="btn btn-sm btn-danger" onClick={() => deleteProduct(pid)}><Trash2 size={13}/></button>
+                        </div>
                       </div>
-                      <span style={{ fontSize:11, fontWeight:700, color: p.status==='active' ? 'var(--green)' : 'var(--t3)' }}>{p.status}</span>
-                      <button className="btn btn-sm btn-danger" onClick={() => deleteProduct(pid)}><Trash2 size={13} strokeWidth={2}/></button>
-                    </div>
-                  )
-                })
-            }
+                    )
+                  })
+              }
+            </div>
           </div>
         )}
 
-        {/* TRANSACTIONS */}
-        {tab==='transactions' && !loading && (
+        {/* ── ТРАНЗАКЦИИ ── */}
+        {tab === 'transactions' && !loading && (
           <div>
             <div style={{ fontSize:12, color:'var(--t3)', marginBottom:12 }}>{transactions.length} транзакций</div>
             {transactions.length === 0
-              ? <div style={{ textAlign:'center', padding:40, color:'var(--t3)' }}>Транзакций нет</div>
+              ? <div style={{ textAlign:'center', padding:40, color:'var(--t3)' }}>Нет</div>
               : <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                  {transactions.map(tx => (
-                    <div key={tx._id||tx.id} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:13, fontWeight:600 }}>@{tx.username||'—'} — {tx.description||tx.type||'—'}</div>
-                        <div style={{ fontSize:11, color:'var(--t3)' }}>
-                          {tx.created_at ? new Date(tx.created_at * 1000).toLocaleString('ru') : '—'} · {tx.status||'—'}
+                  {transactions.map(tx => {
+                    const plus = ['deposit','sale','refund','adjustment'].includes(tx.type)
+                    return (
+                      <div key={tx._id||tx.id} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontWeight:600 }}>@{tx.username||'—'} — {tx.description||tx.type}</div>
+                          <div style={{ fontSize:11, color:'var(--t3)' }}>
+                            {tx.created_at ? new Date(tx.created_at*1000).toLocaleString('ru') : '—'} · {tx.status}
+                          </div>
+                        </div>
+                        <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:14, color: plus ? 'var(--green)' : 'var(--red)' }}>
+                          {plus?'+':'-'}${Math.abs(safe(tx.amount)).toFixed(2)}
                         </div>
                       </div>
-                      <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:14,
-                        color: ['deposit','sale','refund','adjustment'].includes(tx.type) ? 'var(--green)' : 'var(--red)' }}>
-                        {['deposit','sale','refund','adjustment'].includes(tx.type)?'+':'-'}${Math.abs(safe(tx.amount)).toFixed(2)}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
             }
           </div>
         )}
 
-
-        {/* SECURITY LOGS */}
-        {tab==='security' && !loading && (
+        {/* ── БЕЗОПАСНОСТЬ ── */}
+        {tab === 'security' && !loading && (
           <div>
             <div style={{ display:'flex', gap:10, marginBottom:16 }}>
-              <input className="inp" placeholder="Фильтр по IP..." value={secFilter}
-                onChange={e => setSecFilter(e.target.value)} style={{ flex:1 }}
-                onKeyDown={e => e.key==='Enter' && loadTab('security')}/>
+              <input className="inp" placeholder="Фильтр по IP..." value={secFilter} onChange={e => setSecFilter(e.target.value)} style={{ flex:1 }} onKeyDown={e => e.key==='Enter' && loadTab('security')}/>
               <button className="btn btn-secondary" onClick={() => loadTab('security')}>Поиск</button>
               <button className="btn btn-ghost" onClick={() => { setSecFilter(''); loadTab('security') }}>Сброс</button>
             </div>
@@ -474,30 +610,13 @@ export default function AdminPage() {
                 : secLogs.map(l => {
                     const isAlert = ['login_fail','admin_login_fail','banned_access','token_invalid'].includes(l.event)
                     return (
-                      <div key={l.id} style={{
-                        background: isAlert ? 'rgba(231,76,60,0.06)' : 'var(--bg2)',
-                        border: `1px solid ${isAlert ? 'rgba(231,76,60,0.25)' : 'var(--border)'}`,
-                        borderRadius:10, padding:'10px 14px',
-                        display:'flex', alignItems:'center', gap:12
-                      }}>
-                        <div style={{ fontSize:16 }}>
-                          {l.event==='login_ok'?'✓':l.event==='login_fail'?'✗':l.event==='admin_login_ok'?'⚡':l.event==='admin_login_fail'?'!':l.event==='register'?'+':l.event==='banned_access'?'×':'?'}
-                        </div>
+                      <div key={l.id} style={{ background: isAlert ? 'rgba(231,76,60,0.06)' : 'var(--bg2)', border:`1px solid ${isAlert ? 'rgba(231,76,60,0.25)' : 'var(--border)'}`, borderRadius:10, padding:'10px 14px', display:'flex', alignItems:'center', gap:12 }}>
+                        <div style={{ fontSize:16 }}>{l.event==='login_ok'?'✓':l.event==='login_fail'?'✗':l.event==='admin_login_ok'?'⚡':l.event==='admin_login_fail'?'🚨':l.event==='register'?'👤':l.event==='banned_access'?'🚫':'📋'}</div>
                         <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, fontWeight:600, color: isAlert ? 'var(--red)' : 'var(--t1)' }}>
-                            {l.event} {l.username ? `· @${l.username}` : ''}
-                          </div>
-                          <div style={{ fontSize:11, color:'var(--t3)', marginTop:2 }}>
-                            {new Date(l.created_at * 1000).toLocaleString('ru')}
-                            {l.details ? ` · ${typeof l.details === 'string' ? l.details : JSON.stringify(l.details)}` : ''}
-                          </div>
+                          <div style={{ fontSize:13, fontWeight:600, color: isAlert ? 'var(--red)' : 'var(--t1)' }}>{l.event}{l.username ? ` · @${l.username}` : ''}</div>
+                          <div style={{ fontSize:11, color:'var(--t3)', marginTop:2 }}>{new Date(l.created_at*1000).toLocaleString('ru')}</div>
                         </div>
-                        <div style={{
-                          fontFamily:'monospace', fontSize:12, fontWeight:700,
-                          color: isAlert ? 'var(--red)' : 'var(--accent)',
-                          background: isAlert ? 'rgba(231,76,60,0.1)' : 'rgba(245,200,66,0.1)',
-                          padding:'4px 10px', borderRadius:6
-                        }}>{l.ip || '—'}</div>
+                        <div style={{ fontFamily:'monospace', fontSize:12, fontWeight:700, color: isAlert ? 'var(--red)' : 'var(--accent)', background: isAlert ? 'rgba(231,76,60,0.1)' : 'rgba(245,200,66,0.1)', padding:'4px 10px', borderRadius:6 }}>{l.ip||'—'}</div>
                       </div>
                     )
                   })
@@ -506,71 +625,149 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* MESSAGES */}
-        {tab==='messages' && (
+        {/* ── РАССЫЛКА ── */}
+        {tab === 'broadcast' && !loading && (
+          <div style={{ maxWidth:600 }}>
+            <h2 style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:18, marginBottom:20 }}>📢 Массовая рассылка</h2>
+
+            {/* Кому */}
+            <div style={{ marginBottom:16 }}>
+              <Label>КОМУ ОТПРАВИТЬ</Label>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
+                {[['all','Всем пользователям'],['buyers','Только покупателям'],['sellers','Только продавцам'],['verified','Верифицированным']].map(([v,l]) => (
+                  <button key={v} onClick={() => setBroadcastFilter(v)} style={{
+                    padding:'12px 16px', borderRadius:12, border:'1.5px solid', cursor:'pointer', fontSize:13, fontWeight:600, textAlign:'left',
+                    background: broadcastFilter===v ? 'rgba(245,200,66,0.1)' : 'var(--bg3)',
+                    borderColor: broadcastFilter===v ? 'rgba(245,200,66,0.5)' : 'var(--border)',
+                    color: broadcastFilter===v ? 'var(--accent)' : 'var(--t2)',
+                  }}>{l}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Текст */}
+            <div style={{ marginBottom:16 }}>
+              <Label>ТЕКСТ СООБЩЕНИЯ (поддерживается HTML)</Label>
+              <textarea className="inp" rows={6} placeholder="Текст рассылки..." value={broadcastText} onChange={e => setBroadcastText(e.target.value)} style={{ resize:'vertical' }}/>
+            </div>
+
+            <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.2)', borderRadius:12, padding:'12px 16px', marginBottom:16, fontSize:13, color:'var(--t3)' }}>
+              ⚠️ Сообщение будет отправлено только пользователям с привязанным Telegram.
+            </div>
+
+            <button className="btn btn-primary btn-full" onClick={sendBroadcast} disabled={broadcasting || !broadcastText.trim()} style={{ height:48 }}>
+              {broadcasting ? '📤 Отправляем...' : '📢 Отправить рассылку'}
+            </button>
+          </div>
+        )}
+
+        {/* ── СООБЩЕНИЯ ЮЗЕРУ ── */}
+        {tab === 'messages' && !loading && (
           <div style={{ maxWidth:520 }}>
-            <h2 style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:18, marginBottom:16 }}>Отправить Telegram сообщение</h2>
+            <h2 style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:18, marginBottom:20 }}>💬 Написать пользователю</h2>
             <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:24 }}>
               <Label>ПОЛЬЗОВАТЕЛЬ</Label>
               <div style={{ position:'relative', marginBottom:12 }}>
-                <input className="inp" placeholder="@логин или Telegram ID"
-                  value={msgUserId} onChange={e => setMsgUserId(e.target.value)}
-                  style={{ paddingRight: msgUserId ? 36 : 12 }}
-                />
-                {msgUserId && (
-                  <button onClick={() => setMsgUserId('')} style={{
-                    position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
-                    background:'none', border:'none', color:'var(--t4)', cursor:'pointer', fontSize:16, lineHeight:1
-                  }}>×</button>
-                )}
+                <input className="inp" placeholder="@логин или Telegram ID" value={msgUserId} onChange={e => setMsgUserId(e.target.value)} style={{ paddingRight: msgUserId ? 36 : 12 }}/>
+                {msgUserId && <button onClick={() => setMsgUserId('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'var(--t4)', cursor:'pointer', fontSize:16 }}>×</button>}
               </div>
-              {/* Быстрый выбор из загруженных юзеров */}
               {users.length > 0 && msgUserId.length >= 1 && (
-                <div style={{
-                  background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10,
-                  marginBottom:12, maxHeight:160, overflowY:'auto'
-                }}>
-                  {users
-                    .filter(u => {
-                      const q = msgUserId.replace(/^@/,'').toLowerCase()
-                      return (u.username||'').toLowerCase().includes(q) || (u.telegram_id||'').includes(q)
-                    })
-                    .slice(0,6)
-                    .map(u => (
-                      <div key={u.id||u._id} onClick={() => setMsgUserId(u.username||u.telegram_id)}
-                        style={{ padding:'10px 14px', cursor:'pointer', fontSize:13, borderBottom:'1px solid var(--border)',
-                          display:'flex', justifyContent:'space-between', alignItems:'center' }}
-                        onMouseEnter={e => e.currentTarget.style.background='var(--bg4)'}
-                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
-                      >
-                        <span style={{ fontWeight:600 }}>@{u.username||'—'}</span>
-                        <span style={{ fontSize:11, color:'var(--t3)' }}>
-                          {u.telegram_id ? `TG: ${u.telegram_id}` : 'TG не привязан'}
-                        </span>
-                      </div>
-                    ))
-                  }
+                <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10, marginBottom:12, maxHeight:160, overflowY:'auto' }}>
+                  {users.filter(u => { const q = msgUserId.replace(/^@/,'').toLowerCase(); return (u.username||'').toLowerCase().includes(q) || (u.telegram_id||'').includes(q) }).slice(0,6).map(u => (
+                    <div key={u.id||u._id} onClick={() => setMsgUserId(u.username||u.telegram_id)} style={{ padding:'10px 14px', cursor:'pointer', fontSize:13, borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between' }} onMouseEnter={e => e.currentTarget.style.background='var(--bg4)'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                      <span style={{ fontWeight:600 }}>@{u.username||'—'}</span>
+                      <span style={{ fontSize:11, color:'var(--t3)' }}>{u.telegram_id ? `TG: ${u.telegram_id}` : 'TG не привязан'}</span>
+                    </div>
+                  ))}
                 </div>
               )}
-              <Label>ТЕКСТ СООБЩЕНИЯ</Label>
-              <textarea className="inp" rows={4} placeholder="Сообщение..." value={msgText}
-                onChange={e => setMsgText(e.target.value)} style={{ resize:'vertical', marginBottom:16 }}/>
-              <button className="btn btn-primary btn-full" style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}
-                onClick={async () => {
-                  if (!msgUserId || !msgText) return toast.error('Заполните все поля')
-                  const res = await adminApi.post('/message', { username: msgUserId, text: msgText })
-                  res.ok ? (toast.success('Отправлено!'), setMsgText(''), setMsgUserId('')) : toast.error(res.error || 'Ошибка')
-                }}>
-                <Send size={16} strokeWidth={1.75}/> Отправить в Telegram
+              <Label>СООБЩЕНИЕ</Label>
+              <textarea className="inp" rows={4} placeholder="Текст сообщения..." value={msgText} onChange={e => setMsgText(e.target.value)} style={{ marginBottom:16, resize:'none' }}/>
+              <button className="btn btn-primary btn-full" onClick={sendMessage} disabled={!msgText.trim() || !msgUserId.trim()} style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+                <Send size={14}/> Отправить
               </button>
-              <div style={{ fontSize:12, color:'var(--t3)', marginTop:10, textAlign:'center' }}>
-                Введите @логин или Telegram ID пользователя
+            </div>
+          </div>
+        )}
+
+        {/* ── НАСТРОЙКИ ── */}
+        {tab === 'settings' && !loading && (
+          <div style={{ maxWidth:560 }}>
+            <h2 style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:18, marginBottom:20 }}>⚙️ Настройки сайта</h2>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+              {/* AI Admin */}
+              <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:'18px 20px' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div>
+                    <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:15, marginBottom:4 }}>🤖 AI Admin</div>
+                    <div style={{ fontSize:13, color:'var(--t3)' }}>Автоматическое управление сайтом</div>
+                  </div>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button className="btn btn-sm btn-primary" onClick={async () => {
+                      const r = await fetch('/api/tg-webhook/' + localStorage.getItem('mn_admin_token'), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message:{ chat:{id: prompt('Ваш chat_id:')}, text:'/ai_on' }}) })
+                      toast.success('Команда отправлена')
+                    }}>Вкл</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => toast.info('Напишите /ai_off в Telegram боте')}>Выкл</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Текущие настройки из env */}
+              {settings && (
+                <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:'18px 20px' }}>
+                  <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:15, marginBottom:16 }}>📋 Текущие параметры</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    {[
+                      ['Комиссия платформы', settings.commission + '%'],
+                      ['Минимальный депозит', '$' + settings.minDeposit],
+                      ['Лимит вывода в день', '$' + settings.dailyWithdrawLimit],
+                      ['Регистрация', settings.registrationOpen === 'true' ? '✅ Открыта' : '🔒 Закрыта'],
+                      ['AI Admin', settings.aiEnabled === 'true' ? '✅ Активен' : '❌ Отключён'],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+                        <span style={{ fontSize:13, color:'var(--t3)' }}>{label}</span>
+                        <span style={{ fontSize:13, fontWeight:700 }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop:14, fontSize:12, color:'var(--t3)', lineHeight:1.6 }}>
+                    💡 Для изменения параметров — обновите переменные окружения на Railway:<br/>
+                    <code style={{ color:'var(--accent)' }}>COMMISSION_RATE, MIN_DEPOSIT, DAILY_WITHDRAW_LIMIT</code>
+                  </div>
+                </div>
+              )}
+
+              {/* Информация об AI командах */}
+              <div style={{ background:'rgba(124,106,255,0.06)', border:'1px solid rgba(124,106,255,0.2)', borderRadius:14, padding:'18px 20px' }}>
+                <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:15, marginBottom:12 }}>🤖 Управление AI через Telegram</div>
+                {[
+                  ['/ai_on',     'Включить AI Admin'],
+                  ['/ai_off',    'Выключить AI Admin'],
+                  ['/ai_status', 'Статус и очередь задач'],
+                  ['/report',    'Получить отчёт прямо сейчас'],
+                ].map(([cmd, desc]) => (
+                  <div key={cmd} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
+                    <code style={{ background:'var(--bg3)', padding:'3px 8px', borderRadius:6, fontSize:12, color:'var(--accent)', flexShrink:0 }}>{cmd}</code>
+                    <span style={{ fontSize:13, color:'var(--t3)' }}>{desc}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         )}
 
       </TabBoundary>
+
+      <style>{`
+        @media (max-width: 768px) {
+          div[style*="grid-template-columns: repeat(4"] { grid-template-columns: repeat(2,1fr) !important; }
+          div[style*="grid-template-columns: repeat(3"] { grid-template-columns: repeat(2,1fr) !important; }
+        }
+        @media (max-width: 480px) {
+          div[style*="grid-template-columns: repeat(2"] { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
     </div>
   )
 }
