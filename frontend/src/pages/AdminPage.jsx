@@ -109,6 +109,10 @@ export default function AdminPage() {
   const [broadcasting, setBroadcasting] = useState(false)
   const [settings, setSettings] = useState(null)
   const [aiEnabled, setAiEnabled] = useState(true)
+  const [chats, setChats]           = useState([])
+  const [chatSearch, setChatSearch] = useState('')
+  const [openChat, setOpenChat]     = useState(null) // { user1, user2, messages }
+  const [chatLoading, setChatLoading] = useState(false)
 
   const loadTab = async (t) => {
     setLoading(true)
@@ -135,6 +139,9 @@ export default function AdminPage() {
       } else if (t === 'settings') {
         const res = await adminApi.get('/settings')
         if (res && !res.error) setSettings(res)
+      } else if (t === 'chats') {
+        const res = await adminApi.get('/chats')
+        setChats(Array.isArray(res) ? res : [])
       }
     } catch(e) { toast.error('Ошибка: ' + e.message) }
     setLoading(false)
@@ -215,6 +222,15 @@ export default function AdminPage() {
     setBroadcasting(false)
   }
 
+  const openChatDialog = async (user1Id, user2Id) => {
+    setChatLoading(true)
+    try {
+      const res = await adminApi.get(`/chats/${user1Id}/${user2Id}`)
+      if (res && !res.error) setOpenChat(res)
+    } catch(e) { toast.error('Ошибка загрузки') }
+    setChatLoading(false)
+  }
+
   // Фильтрация
   const filteredUsers = users.filter(u => {
     if (userFilter === 'banned')   return u.isBanned
@@ -265,6 +281,7 @@ export default function AdminPage() {
     ['security',     <ShieldCheck size={14}/>,   'Безопасность'],
     ['broadcast',    <Send size={14}/>,           'Рассылка'],
     ['messages',     <MessageCircle size={14}/>, 'Сообщения'],
+    ['chats',        <MessageCircle size={14}/>, 'Чаты юзеров'],
     ['settings',     <Settings size={14}/>,      'Настройки'],
   ]
 
@@ -687,6 +704,90 @@ export default function AdminPage() {
                 <Send size={14}/> Отправить
               </button>
             </div>
+          </div>
+        )}
+
+        {/* ── ЧАТЫ ЮЗЕРОВ ── */}
+        {tab === 'chats' && !loading && (
+          <div>
+            {openChat ? (
+              // Просмотр переписки
+              <div>
+                <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+                  <button className="btn btn-sm btn-ghost" onClick={() => setOpenChat(null)}>← Назад</button>
+                  <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:16 }}>
+                    @{openChat.user1?.username} ↔ @{openChat.user2?.username}
+                  </div>
+                  <span style={{ fontSize:12, color:'var(--t3)' }}>{openChat.messages?.length} сообщений</span>
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:'60vh', overflowY:'auto', padding:'4px 0' }}>
+                  {openChat.messages?.length === 0
+                    ? <div style={{ textAlign:'center', padding:40, color:'var(--t3)' }}>Сообщений нет</div>
+                    : openChat.messages.map(m => {
+                        const isFirst = m.sender_id === openChat.user1?.id
+                        return (
+                          <div key={m.id} style={{ display:'flex', justifyContent: isFirst ? 'flex-start' : 'flex-end' }}>
+                            <div style={{
+                              maxWidth:'70%', padding:'10px 14px',
+                              borderRadius: isFirst ? '4px 18px 18px 18px' : '18px 4px 18px 18px',
+                              background: isFirst ? 'var(--bg3)' : 'rgba(124,106,255,0.2)',
+                              border: `1px solid ${isFirst ? 'var(--border)' : 'rgba(124,106,255,0.3)'}`,
+                            }}>
+                              <div style={{ fontSize:11, fontWeight:700, color: isFirst ? 'var(--accent)' : 'var(--purple)', marginBottom:4 }}>
+                                @{m.sender_username}
+                              </div>
+                              <div style={{ fontSize:14, lineHeight:1.5, color:'var(--t1)' }}>{m.text}</div>
+                              <div style={{ fontSize:10, color:'var(--t4)', marginTop:4, textAlign:'right' }}>
+                                {new Date((m.created_at||0)*1000).toLocaleString('ru')}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })
+                  }
+                </div>
+              </div>
+            ) : (
+              // Список диалогов
+              <div>
+                <div style={{ display:'flex', gap:10, marginBottom:16 }}>
+                  <input className="inp" placeholder="Поиск по логину..." value={chatSearch}
+                    onChange={e => setChatSearch(e.target.value)} style={{ flex:1 }}/>
+                  <button className="btn btn-secondary" onClick={() => loadTab('chats')}>Обновить</button>
+                </div>
+                <div style={{ fontSize:12, color:'var(--t3)', marginBottom:12 }}>{chats.length} диалогов</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {chats
+                    .filter(c => !chatSearch || (c.user1_username||'').includes(chatSearch) || (c.user2_username||'').includes(chatSearch))
+                    .map((c, i) => (
+                      <div key={i} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 16px', display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}
+                        onClick={() => openChatDialog(c.user1_id, c.user2_id)}
+                        onMouseEnter={e => e.currentTarget.style.borderColor='var(--accent)'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}
+                      >
+                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg,var(--purple),var(--accent))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700 }}>
+                            {(c.user1_username||'?')[0].toUpperCase()}
+                          </div>
+                          <span style={{ fontSize:13, color:'var(--t3)' }}>↔</span>
+                          <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg,var(--accent),var(--green))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700 }}>
+                            {(c.user2_username||'?')[0].toUpperCase()}
+                          </div>
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:700 }}>@{c.user1_username} ↔ @{c.user2_username}</div>
+                          <div style={{ fontSize:12, color:'var(--t3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.last_text}</div>
+                        </div>
+                        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4, flexShrink:0 }}>
+                          <span style={{ fontSize:11, color:'var(--t4)' }}>{new Date((c.last_time||0)*1000).toLocaleDateString('ru')}</span>
+                          <span style={{ fontSize:11, color:'var(--purple)', fontWeight:700 }}>{c.msg_count} сообщ.</span>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
           </div>
         )}
 
