@@ -399,12 +399,12 @@ const CATEGORIES = [
 export default function HomePage() {
   const [products, setProducts] = useState([])
   const [loading, setLoading]   = useState(true)
-  const {
   useMeta({
     title: 'Minions Market — Купить и продать игровые аккаунты, валюту, скины',
     description: 'Безопасный маркетплейс игровых товаров. Покупай аккаунты, валюту, предметы и скины с гарантом. Защита каждой сделки через эскроу.',
     keywords: 'купить игровой аккаунт, продать аккаунт, игровая валюта, скины, маркетплейс игр',
   })
+  const {
  user } = useStore()
 
   useEffect(() => {
