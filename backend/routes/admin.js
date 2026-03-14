@@ -7,8 +7,57 @@ const notify   = require('../utils/notify');
 const { completeDeal } = require('./deals');
 const { sanitizeUser } = require('./auth');
 
-// Хранилище заблокированных IP в памяти (сбрасывается при рестарте)
+// Хранилище заблокированных IP в памяти
 const blockedIps = new Map(); // ip -> { until, attempts }
+
+// 2FA коды в памяти: ip -> { code, expires }
+const twoFaCodes = new Map();
+
+// ── POST /admin/request-2fa — запросить код в Telegram ───────────────────────
+router.post('/request-2fa', async (req, res) => {
+  const adminLogin    = process.env.ADMIN_LOGIN?.trim();
+  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+  const { login, password } = req.body;
+  const ip = getIp(req);
+
+  // Проверяем блокировку
+  const block = blockedIps.get(ip);
+  if (block && block.until > Date.now()) {
+    return res.status(429).json({ error: 'IP заблокирован' });
+  }
+
+  // Проверяем логин/пароль
+  await new Promise(r => setTimeout(r, 500));
+  if (!adminLogin || !adminPassword ||
+      (login||'').trim() !== adminLogin ||
+      (password||'').trim() !== adminPassword) {
+    return res.status(401).json({ error: 'Неверные данные' });
+  }
+
+  // Генерируем 6-значный код
+  const code    = String(Math.floor(100000 + Math.random() * 900000));
+  const expires = Date.now() + 5 * 60 * 1000; // 5 минут
+  twoFaCodes.set(ip, { code, expires });
+
+  // Отправляем код в Telegram
+  try {
+    const { sendTg } = require('../utils/notify');
+    if (process.env.REPORT_CHAT_ID) {
+      await sendTg(process.env.REPORT_CHAT_ID,
+        `🔐 <b>Код входа в админку</b>\n\n` +
+        `Код: <code>${code}</code>\n` +
+        `IP: <code>${ip}</code>\n` +
+        `⏱ Действителен 5 минут\n\n` +
+        `Если это не вы — немедленно смените пароль!`
+      );
+    }
+  } catch(e) {
+    console.error('[2FA] Telegram error:', e.message);
+  }
+
+  console.log(`[2FA] Код отправлен для IP ${ip}`);
+  res.json({ ok: true, message: 'Код отправлен в Telegram' });
+});
 
 router.post('/login', async (req, res) => {
   const { login, password } = req.body;
@@ -91,10 +140,36 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Неверные данные' });
   }
 
+  // Проверяем 2FA код если включён Telegram
+  if (process.env.REPORT_CHAT_ID && process.env.TELEGRAM_BOT_TOKEN) {
+    const { twoFaCode } = req.body;
+    const saved = twoFaCodes.get(ip);
+
+    if (!saved || saved.expires < Date.now()) {
+      return res.status(401).json({ error: 'Сначала запросите код', need2fa: true });
+    }
+    if (saved.code !== String(twoFaCode || '').trim()) {
+      console.warn(`[2FA] Неверный код от IP ${ip}`);
+      return res.status(401).json({ error: 'Неверный код из Telegram' });
+    }
+    twoFaCodes.delete(ip); // Код одноразовый
+  }
+
   // Успешный вход — сбрасываем счётчик этого IP
   blockedIps.delete(ip);
   console.log(`Admin login successful from ${ip}`);
   await log(EVENTS.ADMIN_LOGIN_OK, req, { username: login, details: { ip } });
+
+  // Уведомляем об успешном входе
+  try {
+    const { sendTg } = require('../utils/notify');
+    if (process.env.REPORT_CHAT_ID) {
+      await sendTg(process.env.REPORT_CHAT_ID,
+        `✅ <b>Вход в админку</b>\n\nIP: <code>${ip}</code>\nВремя: ${new Date().toLocaleString('ru')}`
+      );
+    }
+  } catch(e) {}
+
   res.json({ token: generateAdminToken() });
 });
 
