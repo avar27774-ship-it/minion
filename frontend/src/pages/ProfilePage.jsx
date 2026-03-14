@@ -161,6 +161,7 @@ export default function ProfilePage() {
           </div>
 
           {isMe && <Link to="/wallet" className="btn btn-primary btn-full"><Wallet size={15} style={{marginRight:6}}/> Кошелёк</Link>}
+          {!isMe && <Link to={`/messages/${id}`} className="btn btn-secondary btn-full" style={{marginTop:8}}>💬 Написать сообщение</Link>}
         </div>
 
         {/* Правая колонка */}
