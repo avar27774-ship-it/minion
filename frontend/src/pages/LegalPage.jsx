@@ -200,7 +200,7 @@ export default function LegalPage() {
   if (!data) return <Navigate to="/legal/rules" replace />
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', padding: '48px 20px', animation: 'fadeUp 0.4s ease both' }}>
+    <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 12px', animation: 'fadeUp 0.4s ease both' }}>
 
       {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 32, fontSize: 13, color: 'var(--t3)' }}>
