@@ -68,6 +68,8 @@ export default function AdminPage() {
   const [authed, setAuthed]     = useState(!!localStorage.getItem('mn_admin_token'))
   const [login, setLogin]       = useState('')
   const [pass, setPass]         = useState('')
+  const [twoFaStep, setTwoFaStep] = useState(false)  // шаг 2FA
+  const [twoFaCode, setTwoFaCode] = useState('')     // код из Telegram
   const [tab, setTab]           = useState('stats')
   const [stats, setStats]       = useState(null)
   const [users, setUsers]       = useState([])
@@ -81,16 +83,35 @@ export default function AdminPage() {
   const [secLogs, setSecLogs]       = useState([])
   const [secFilter, setSecFilter]   = useState('')
 
+  // Шаг 1 — запросить 2FA код в Telegram
+  const handleRequestCode = async () => {
+    setLoading(true)
+    try {
+      const res = await adminApi.post('/request-2fa', { login, password: pass })
+      if (res.ok) {
+        setTwoFaStep(true)
+        toast.success('Код отправлен в Telegram!')
+      } else {
+        toast.error(res.error || 'Неверные данные')
+      }
+    } catch { toast.error('Ошибка') }
+    setLoading(false)
+  }
+
+  // Шаг 2 — войти с кодом
   const handleLogin = async () => {
     setLoading(true)
     try {
-      const res = await adminApi.post('/login', { login, password: pass })
+      const res = await adminApi.post('/login', { login, password: pass, twoFaCode })
       if (res.token) {
         localStorage.setItem('mn_admin_token', res.token)
         setAuthed(true)
         toast.success('Добро пожаловать!')
+      } else if (res.need2fa) {
+        setTwoFaStep(false)
+        toast.error('Сначала запросите код')
       } else {
-        toast.error(res.error || 'Неверные данные')
+        toast.error(res.error || 'Неверный код')
       }
     } catch { toast.error('Ошибка') }
     setLoading(false)
@@ -185,12 +206,35 @@ export default function AdminPage() {
           <div style={{ fontSize:40, marginBottom:8 }}><Zap size={36} strokeWidth={1.5}/></div>
           <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:22 }}>Панель администратора</div>
         </div>
-        <input className="inp" placeholder="Логин" value={login} onChange={e => setLogin(e.target.value)} style={{ marginBottom:10 }}/>
-        <input className="inp" type="password" placeholder="Пароль" value={pass} onChange={e => setPass(e.target.value)}
-          onKeyDown={e => e.key==='Enter' && handleLogin()} style={{ marginBottom:16 }}/>
-        <button className="btn btn-primary btn-full" onClick={handleLogin} disabled={loading}>
-          {loading ? '...' : 'Войти →'}
-        </button>
+        {!twoFaStep ? (
+          <>
+            <input className="inp" placeholder="Логин" value={login} onChange={e => setLogin(e.target.value)} style={{ marginBottom:10 }}/>
+            <input className="inp" type="password" placeholder="Пароль" value={pass}
+              onChange={e => setPass(e.target.value)}
+              onKeyDown={e => e.key==='Enter' && handleRequestCode()}
+              style={{ marginBottom:16 }}/>
+            <button className="btn btn-primary btn-full" onClick={handleRequestCode} disabled={loading}>
+              {loading ? '...' : 'Получить код →'}
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{ textAlign:'center', marginBottom:16, fontSize:13, color:'var(--t3)', lineHeight:1.6 }}>
+              📱 Код отправлен в <b style={{color:'var(--t2)'}}>Telegram</b><br/>Введите 6-значный код
+            </div>
+            <input className="inp" placeholder="000000" value={twoFaCode}
+              onChange={e => setTwoFaCode(e.target.value.replace(/\D/g,'').slice(0,6))}
+              onKeyDown={e => e.key==='Enter' && handleLogin()}
+              style={{ marginBottom:12, textAlign:'center', fontSize:24, fontFamily:'var(--font-h)', fontWeight:800, letterSpacing:8 }}/>
+            <button className="btn btn-primary btn-full" onClick={handleLogin} disabled={loading || twoFaCode.length < 6}>
+              {loading ? '...' : 'Войти →'}
+            </button>
+            <button className="btn btn-ghost btn-full" onClick={() => { setTwoFaStep(false); setTwoFaCode('') }}
+              style={{ marginTop:8, fontSize:12 }}>
+              ← Назад
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
