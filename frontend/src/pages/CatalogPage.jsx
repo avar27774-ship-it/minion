@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import useMeta from '../hooks/useMeta'
 import { Gamepad2, Coins, Sword, Palette, KeyRound, Star, Rocket, Package, Search } from '../components/Icon'
 import DarkVeil from '../components/DarkVeil/DarkVeil'
 import { useSearchParams } from 'react-router-dom'
@@ -36,6 +37,12 @@ export default function CatalogPage() {
   const [maxP, setMaxP] = useState(maxPrice)
 
   const load = useCallback(async (p=1) => {
+  useMeta({
+    title: 'Каталог товаров — игровые аккаунты, валюта, предметы',
+    description: 'Каталог цифровых товаров на Minions Market. Игровые аккаунты, внутриигровая валюта, скины, ключи и буст от проверенных продавцов.',
+    keywords: 'каталог игровых товаров, аккаунты игр, игровая валюта купить, скины купить',
+  })
+
     setLoading(true)
     try {
       const params = new URLSearchParams({ limit:20, page:p, sort })
