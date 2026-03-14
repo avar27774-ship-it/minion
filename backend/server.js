@@ -8,6 +8,22 @@ const cron      = require('node-cron');
 const app = express();
 app.set('trust proxy', 1);
 
+// ── Блокировка IP ─────────────────────────────────────────────────────────────
+// Добавляй плохие IP через переменную BLOCKED_IPS=ip1,ip2,ip3 на Railway
+const getBlockedIps = () => (process.env.BLOCKED_IPS || '').split(',').map(s => s.trim()).filter(Boolean);
+
+app.use((req, res, next) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+    || req.headers['cf-connecting-ip']
+    || req.socket?.remoteAddress
+    || '';
+  if (getBlockedIps().includes(ip)) {
+    console.warn(`[BLOCKED] IP ${ip} — запрос отклонён: ${req.method} ${req.path}`);
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+});
+
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',')
   : ['http://localhost:5173', 'http://localhost:3000'];
@@ -61,7 +77,6 @@ app.get('*', (req, res) => {
 const { completeDeal } = require('./routes/deals');
 const { queryAll, run } = require('./models/db');
 
-// Авто-завершение сделок каждые 15 минут
 cron.schedule('*/15 * * * *', async () => {
   try {
     const now     = Math.floor(Date.now() / 1000);
@@ -77,7 +92,6 @@ cron.schedule('*/15 * * * *', async () => {
   } catch (e) { console.error('[Cron] Error:', e.message); }
 });
 
-// Снятие банов и продвижений каждый час
 cron.schedule('0 * * * *', async () => {
   try {
     const now = Math.floor(Date.now() / 1000);
@@ -89,22 +103,20 @@ cron.schedule('0 * * * *', async () => {
 // ── Hourly AI Report → Telegram ───────────────────────────────────────────────
 require('./utils/hourlyReport');
 
-// ── AI Admin (модерация / споры / безопасность / поддержка) ───────────────────
-const { init: initAiAdmin } = require('./utils/aiAdmin');
-
 // ── Init DB then start ────────────────────────────────────────────────────────
 const { initSchema } = require('./models/db');
 const PORT = process.env.PORT || 5000;
 
 initSchema()
   .then(async () => {
-    // Миграция колонок для AI Admin
+    // Миграция колонок для AI Admin (выполняется автоматически при каждом старте)
     await run(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_moderated    INTEGER DEFAULT 0`).catch(() => {});
     await run(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_price_advised INTEGER DEFAULT 0`).catch(() => {});
     await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS ai_reactivated   INTEGER DEFAULT 0`).catch(() => {});
     console.log('✅ AI Admin миграция выполнена');
 
     // Запускаем AI Admin после миграции
+    const { init: initAiAdmin } = require('./utils/aiAdmin');
     await initAiAdmin().catch(e => console.error('[AI Admin] Init error:', e.message));
   })
   .then(() => {
