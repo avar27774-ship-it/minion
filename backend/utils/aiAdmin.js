@@ -54,8 +54,12 @@ function askClaude(systemPrompt, userPrompt, maxTokens = 500) {
         catch (e) { reject(e); }
       });
     });
-    req.on('error', reject);
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Claude timeout')); });
+    req.on('error', (e) => {
+      console.warn('[AI] Claude connection error:', e.code || e.message, '— retrying...');
+      // Небольшая задержка и повтор через reject (caller должен повторить)
+      reject(e);
+    });
+    req.setTimeout(45000, () => { req.destroy(); reject(new Error('Claude timeout')); });
     req.write(body);
     req.end();
   });
@@ -606,12 +610,14 @@ async function handleUserQuestion(telegramId, question) {
       [String(telegramId)]
     );
 
-    // Уведомляем тебя о каждом вопросе
-    await tg(process.env.REPORT_CHAT_ID,
-      `💬 <b>${isOwner ? '👑 Ты спрашиваешь' : 'Вопрос пользователя'}</b>\n\n` +
-      `👤 ${user ? '@' + user.username : 'TG:' + telegramId}\n` +
-      `❓ ${question}`
-    );
+    // Уведомляем тебя только если это НЕ ты сам пишешь
+    if (!isOwner) {
+      await tg(process.env.REPORT_CHAT_ID,
+        `💬 <b>Вопрос пользователя</b>\n\n` +
+        `👤 ${user ? '@' + user.username : 'TG:' + telegramId}\n` +
+        `❓ ${question}`
+      );
+    }
 
     let systemPrompt, userContext;
 
@@ -662,19 +668,21 @@ ${topProducts.map(p => `- ${p.title} | $${p.price} | ${p.views} просмотр
 
 Вопрос хозяина: ${question}`;
 
-      systemPrompt = `Ты персональный AI-ассистент хозяина маркетплейса Minions Market.
-Общайся свободно, отвечай развёрнуто на русском языке.
-У тебя есть доступ к актуальной статистике сайта — используй её в ответах.
+      systemPrompt = `Ты умный персональный AI-ассистент и советник хозяина маркетплейса Minions Market.
 
-Можешь обсуждать:
-- Статистику и аналитику сайта
-- Технические вопросы о работе сайта
-- Советы по улучшению платформы
-- Стратегию развития бизнеса
-- Вопросы по пользователям и сделкам (общая информация)
-- Любые вопросы связанные с управлением сайтом
+Общайся как настоящий умный собеседник — живо, естественно, по-русски. Не используй шаблонные фразы.
 
-Если вопрос вообще не связан с сайтом или бизнесом — вежливо скажи что ты специализируешься на вопросах маркетплейса.`;
+У тебя есть доступ к актуальной статистике сайта — используй данные в ответах когда это уместно.
+
+Ты можешь:
+- Отвечать на любые вопросы о сайте, бизнесе, пользователях, сделках
+- Давать советы по развитию, маркетингу, улучшению платформы
+- Анализировать статистику и делать выводы
+- Обсуждать технические вопросы
+- Просто общаться на темы связанные с бизнесом и маркетплейсом
+- Отвечать развёрнуто когда нужно, кратко когда достаточно
+
+Будь полезным, умным и естественным собеседником. Не ограничивай себя.`;
 
     } else {
       // ── ОБЫЧНЫЙ ПОЛЬЗОВАТЕЛЬ — только его данные и публичная информация ──
@@ -712,10 +720,12 @@ ${topProducts.map(p => `- ${p.title} | $${p.price} | ${p.views} просмотр
 
     const answer = await askClaude(systemPrompt, userContext, isOwner ? 800 : 400);
 
-    // Уведомляем тебя об ответе
-    await tg(process.env.REPORT_CHAT_ID,
-      `🤖 <b>AI ответил</b>\n\n👤 ${user ? '@' + user.username : 'TG:' + telegramId}\n💬 ${answer.slice(0, 200)}${answer.length > 200 ? '...' : ''}`
-    );
+    // Уведомляем тебя об ответе только если это НЕ ты
+    if (!isOwner) {
+      await tg(process.env.REPORT_CHAT_ID,
+        `🤖 <b>AI ответил</b>\n\n👤 ${user ? '@' + user.username : 'TG:' + telegramId}\n💬 ${answer.slice(0, 200)}${answer.length > 200 ? '...' : ''}`
+      );
+    }
 
     return answer;
   } catch (e) {
