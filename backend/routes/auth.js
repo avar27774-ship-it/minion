@@ -181,6 +181,15 @@ router.post('/login', async (req, res) => {
     }
 
     const token = generateToken(user.id);
+
+    // Применяем реф код если передан
+    if (req.body.ref_code) {
+      const partner = await queryOne('SELECT id, ref_code FROM users WHERE ref_code=$1 AND is_partner=1', [req.body.ref_code]).catch(() => null);
+      if (partner && partner.id !== user.id) {
+        await run('UPDATE users SET ref_by=$1 WHERE id=$2 AND ref_by IS NULL', [req.body.ref_code, user.id]).catch(() => {});
+      }
+    }
+
     res.json({ token, user: sanitizeUser(user) });
   } catch (e) {
     console.error('Login error:', e);
