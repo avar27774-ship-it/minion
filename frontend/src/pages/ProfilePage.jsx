@@ -1,4 +1,5 @@
 import React, { useState, useEffect, Component } from 'react'
+import useMeta from '../hooks/useMeta'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
 import toast from 'react-hot-toast'
@@ -17,8 +18,28 @@ class CardBoundary extends Component {
   }
 }
 
+const LEVELS = {
+  newcomer:    { label:'Новичок',  emoji:'🌱', color:'#6b7280', bg:'rgba(107,114,128,0.12)' },
+  experienced: { label:'Опытный',  emoji:'⭐', color:'#3b82f6', bg:'rgba(59,130,246,0.12)' },
+  pro:         { label:'Про',       emoji:'💎', color:'#8b5cf6', bg:'rgba(139,92,246,0.12)' },
+  legend:      { label:'Легенда',   emoji:'👑', color:'#f5c842', bg:'rgba(245,200,66,0.12)' },
+}
+
+function calcLevel(totalSales) {
+  const s = parseInt(totalSales) || 0
+  if (s >= 50) return 'legend'
+  if (s >= 20) return 'pro'
+  if (s >= 5)  return 'experienced'
+  return 'newcomer'
+}
+
 export default function ProfilePage() {
-  const { id } = useParams()
+  useMeta(profile ? {
+    title: `@${profile.username} — профиль продавца`,
+    description: `Профиль @${profile.username} на Minions Market. Рейтинг ${profile.rating}, ${profile.total_sales || 0} продаж.`,
+  } : { title: 'Профиль' })
+  const {
+ id } = useParams()
   const { user: me, hydrated } = useStore()
   const navigate = useNavigate()
   const [profile, setProfile]   = useState(null)
@@ -170,6 +191,21 @@ export default function ProfilePage() {
             <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom:8 }}>
               <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:26, margin:0 }}>@{name}</h1>
               {!!profile.isVerified && <span className="badge badge-green">✓ Верифицирован</span>}
+              {(() => {
+                const lvlKey = profile.seller_level || calcLevel(profile.total_sales)
+                const lvl = LEVELS[lvlKey] || LEVELS.newcomer
+                return (
+                  <span style={{
+                    display:'inline-flex', alignItems:'center', gap:4,
+                    padding:'3px 10px', borderRadius:100,
+                    background: lvl.bg, color: lvl.color,
+                    fontSize:11, fontWeight:700, fontFamily:'var(--font-h)',
+                    border: '1px solid ' + lvl.color + '44',
+                  }}>
+                    {lvl.emoji} {lvl.label}
+                  </span>
+                )
+              })()}
               {!!profile.isAdmin    && <span className="badge badge-purple"><Zap size={12} style={{marginRight:3}}/> Админ</span>}
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
