@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { api, useStore } from '../store'
-import { ArrowLeft, Send } from '../components/Icon'
+import { ArrowLeft, Send, Image } from '../components/Icon'
 import toast from 'react-hot-toast'
 
 export default function MessagesPage() {
@@ -15,6 +15,8 @@ export default function MessagesPage() {
   const [text,     setText]     = useState('')
   const [loading,  setLoading]  = useState(true)
   const [sending,  setSending]  = useState(false)
+  const [image,    setImage]    = useState(null)   // base64 превью
+  const fileRef = useRef(null)
   const bottomRef = useRef(null)
 
   // Загружаем диалоги
@@ -55,16 +57,32 @@ export default function MessagesPage() {
   }, [userId])
 
   const send = async () => {
-    if (!text.trim() || !userId) return
+    if (!text.trim() && !image) return
+    if (!userId) return
     setSending(true)
     try {
-      const { data } = await api.post(`/messages/${userId}`, { text: text.trim() })
+      const { data } = await api.post(`/messages/${userId}`, {
+        text: text.trim() || '📷 Фото',
+        image: image || null,
+      })
       setMessages(prev => [...prev, data.message])
       setText('')
+      setImage(null)
     } catch(e) {
       toast.error(e.response?.data?.error || 'Ошибка отправки')
     }
     setSending(false)
+  }
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) { toast.error('Максимальный размер фото 5MB'); return }
+    if (!file.type.startsWith('image/')) { toast.error('Только изображения'); return }
+    const reader = new FileReader()
+    reader.onload = (ev) => setImage(ev.target.result)
+    reader.readAsDataURL(file)
+    e.target.value = ''
   }
 
   if (!user) return null
@@ -200,11 +218,34 @@ export default function MessagesPage() {
             <div ref={bottomRef}/>
           </div>
 
+          {/* Превью фото */}
+          {image && (
+            <div style={{ padding:'8px 16px 0', background:'var(--bg2)', display:'flex', alignItems:'center', gap:10 }}>
+              <img src={image} alt="preview" style={{ width:60, height:60, borderRadius:10, objectFit:'cover' }}/>
+              <button onClick={() => setImage(null)} style={{
+                width:24, height:24, borderRadius:'50%', background:'var(--red)',
+                border:'none', cursor:'pointer', color:'#fff', fontSize:14,
+                display:'flex', alignItems:'center', justifyContent:'center',
+              }}>✕</button>
+            </div>
+          )}
+
           {/* Поле ввода */}
           <div style={{
             padding:'12px 16px', borderTop:'1px solid var(--border)',
-            background:'var(--bg2)', display:'flex', gap:10, alignItems:'flex-end',
+            background:'var(--bg2)', display:'flex', gap:8, alignItems:'flex-end',
           }}>
+            {/* Кнопка фото */}
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display:'none' }}/>
+            <button onClick={() => fileRef.current?.click()} style={{
+              width:44, height:44, borderRadius:12, flexShrink:0,
+              background:'var(--bg3)', border:'1px solid var(--border)',
+              cursor:'pointer', display:'flex', alignItems:'center',
+              justifyContent:'center', color:'var(--t3)',
+            }}>
+              <Image size={18} strokeWidth={1.75}/>
+            </button>
+
             <textarea
               className="inp"
               placeholder="Написать сообщение..."
@@ -219,13 +260,13 @@ export default function MessagesPage() {
             />
             <button
               onClick={send}
-              disabled={sending || !text.trim()}
+              disabled={sending || (!text.trim() && !image)}
               style={{
                 width:44, height:44, borderRadius:12, flexShrink:0,
-                background: text.trim() ? 'var(--accent)' : 'var(--bg3)',
-                border:'none', cursor: text.trim() ? 'pointer' : 'default',
+                background: (text.trim() || image) ? 'var(--accent)' : 'var(--bg3)',
+                border:'none', cursor: (text.trim() || image) ? 'pointer' : 'default',
                 display:'flex', alignItems:'center', justifyContent:'center',
-                color: text.trim() ? '#0d0d14' : 'var(--t3)',
+                color: (text.trim() || image) ? '#0d0d14' : 'var(--t3)',
                 transition:'all 0.15s',
               }}
             >
