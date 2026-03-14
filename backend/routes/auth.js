@@ -147,9 +147,38 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ error: `Аккаунт заблокирован${until}. ${user.ban_reason || ''}` });
     }
 
-    const now = Math.floor(Date.now() / 1000);
-    await run('UPDATE users SET last_active = $1, last_ip = $2 WHERE id = $3', [now, getIp(req), user.id]);
+    const now       = Math.floor(Date.now() / 1000);
+    const currentIp = getIp(req);
+    const isNewIp   = user.last_ip && user.last_ip !== currentIp;
+
+    await run('UPDATE users SET last_active = $1, last_ip = $2 WHERE id = $3', [now, currentIp, user.id]);
     await log(EVENTS.LOGIN_OK, req, { userId: user.id, username: user.username });
+
+    // Уведомление о входе с нового IP
+    if (isNewIp) {
+      const notify = require('../utils/notify');
+
+      // Сначала тебе
+      if (process.env.REPORT_CHAT_ID) {
+        notify.sendTg(process.env.REPORT_CHAT_ID,
+          `🔔 <b>Вход с нового IP</b>\n\n` +
+          `👤 @${user.username}\n` +
+          `📍 Старый IP: <code>${user.last_ip}</code>\n` +
+          `📍 Новый IP: <code>${currentIp}</code>\n` +
+          `🕐 ${new Date().toLocaleString('ru')}`
+        ).catch(() => {});
+      }
+
+      // Потом пользователю
+      if (user.telegram_id) {
+        notify.sendTg(user.telegram_id,
+          `🔔 <b>Вход в аккаунт с нового устройства</b>\n\n` +
+          `IP: <code>${currentIp}</code>\n` +
+          `Время: ${new Date().toLocaleString('ru')}\n\n` +
+          `Если это не вы — немедленно смените пароль!`
+        ).catch(() => {});
+      }
+    }
 
     const token = generateToken(user.id);
     res.json({ token, user: sanitizeUser(user) });
