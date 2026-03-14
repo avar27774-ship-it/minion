@@ -194,6 +194,24 @@ export default function AdminPage() {
     r.ok ? (toast.success(`Новый баланс: $${safe(r.newBalance).toFixed(2)}`), loadTab('users')) : toast.error(r.error)
   }
 
+  // Уровни продавца
+  const LEVELS = {
+    newcomer:    { label:'🌱 Новичок',  color:'#6b7280' },
+    experienced: { label:'⭐ Опытный',  color:'#3b82f6' },
+    pro:         { label:'💎 Про',       color:'#8b5cf6' },
+    legend:      { label:'👑 Легенда',   color:'#f5c842' },
+  }
+
+  const setUserLevel = async (id, level) => {
+    const r = await adminApi.post(`/users/${id}/set-level`, { level, override: true })
+    r.ok ? (toast.success('Уровень: ' + LEVELS[level]?.label), loadTab('users')) : toast.error(r.error)
+  }
+
+  const recalcLevels = async () => {
+    const r = await adminApi.post('/users/recalc-levels', {})
+    r.ok ? toast.success('Пересчитано: ' + r.updated + ' юзеров') : toast.error(r.error)
+  }
+
   // Товары
   const deleteProduct  = async (id) => { if (!window.confirm('Удалить?')) return; const r = await adminApi.del(`/products/${id}`); r.ok ? (toast.success('Удалён'), loadTab('products')) : toast.error(r.error) }
   const promoteProduct = async (id) => { const r = await adminApi.post(`/products/${id}/promote`, { hours: 24 }); r.ok ? (toast.success('Продвинут на 24ч!'), loadTab('products')) : toast.error(r.error) }
@@ -435,6 +453,7 @@ export default function AdminPage() {
                 onChange={e => setUserSearch(e.target.value)} style={{ flex:1, minWidth:200 }}
                 onKeyDown={e => e.key==='Enter' && loadTab('users')}/>
               <button className="btn btn-secondary" onClick={() => loadTab('users')}>Найти</button>
+              <button className="btn btn-ghost" onClick={recalcLevels} title="Пересчитать уровни автоматически">🔄 Уровни</button>
             </div>
             {/* Фильтры */}
             <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
@@ -483,6 +502,18 @@ export default function AdminPage() {
                               ? <button className="btn btn-sm btn-secondary" onClick={() => unbanUser(uid)} style={{color:'var(--green)'}}><CheckCircle size={13}/></button>
                               : <button className="btn btn-sm btn-danger" onClick={() => banUser(uid)}><Ban size={13}/></button>
                             }
+                          </div>
+                          {/* Уровни продавца */}
+                          <div style={{ display:'flex', gap:4, marginTop:8, flexWrap:'wrap' }}>
+                            {Object.entries(LEVELS).map(([key, lvl]) => (
+                              <button key={key} onClick={() => setUserLevel(uid, key)} style={{
+                                padding:'3px 8px', borderRadius:6, border:'1px solid', cursor:'pointer',
+                                fontSize:10, fontWeight:700,
+                                background: (u.seller_level||'newcomer')===key ? lvl.color+'22' : 'var(--bg3)',
+                                borderColor: (u.seller_level||'newcomer')===key ? lvl.color : 'var(--border)',
+                                color: (u.seller_level||'newcomer')===key ? lvl.color : 'var(--t3)',
+                              }}>{lvl.label}</button>
+                            ))}
                           </div>
                         </div>
                         {u.isBanned && u.banReason && (
