@@ -9,18 +9,103 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ── Блокировка IP ─────────────────────────────────────────────────────────────
-// Добавляй плохие IP через переменную BLOCKED_IPS=ip1,ip2,ip3 на Railway
 const getBlockedIps = () => (process.env.BLOCKED_IPS || '').split(',').map(s => s.trim()).filter(Boolean);
 
-app.use((req, res, next) => {
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+// Автобан в памяти (сбрасывается при рестарте, постоянные — в BLOCKED_IPS)
+const autoBannedIps = new Map(); // ip -> { until, reason }
+
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim()
     || req.headers['cf-connecting-ip']
     || req.socket?.remoteAddress
     || '';
+}
+
+function autoBanIp(ip, minutes, reason) {
+  autoBannedIps.set(ip, { until: Date.now() + minutes * 60000, reason });
+  console.warn(`[SECURITY] Автобан IP ${ip} на ${minutes} мин: ${reason}`);
+  // Уведомляем админа
+  try {
+    const { sendTg } = require('./utils/notify');
+    if (process.env.REPORT_CHAT_ID) {
+      sendTg(process.env.REPORT_CHAT_ID,
+        `🔴 <b>Автобан IP</b>\n\nIP: <code>${ip}</code>\nПричина: ${reason}\nСрок: ${minutes} минут`
+      ).catch(() => {});
+    }
+  } catch(e) {}
+}
+
+// SQL-инъекции и известные паттерны атак
+const ATTACK_PATTERNS = [
+  /(OR|AND)\s+[\d\w'"]+\s*=\s*[\d\w'"]+/i,  // OR 1=1, AND 'a'='a'
+  /union\s+select/i,
+  /select\s+.+\s+from/i,
+  /insert\s+into/i,
+  /drop\s+table/i,
+  /exec\s*\(/i,
+  /script\s*>/i,                                        // XSS
+  /<\s*script/i,
+  /javascript\s*:/i,
+  /\/etc\/passwd/i,                                     // Path traversal
+  /\.\.\/\.\.\/\.\.\//,
+  /eval\s*\(/i,
+  /base64_decode/i,
+  /wp-admin|phpmyadmin|\.env|\.git\/config/i,           // Сканирование
+];
+
+function containsAttack(str) {
+  if (!str || typeof str !== 'string') return false;
+  return ATTACK_PATTERNS.some(p => p.test(str));
+}
+
+function checkForAttacks(obj, depth = 0) {
+  if (depth > 5) return false;
+  if (typeof obj === 'string') return containsAttack(obj);
+  if (typeof obj === 'object' && obj !== null) {
+    return Object.values(obj).some(v => checkForAttacks(v, depth + 1));
+  }
+  return false;
+}
+
+// Главный middleware защиты
+app.use((req, res, next) => {
+  const ip = getClientIp(req);
+
+  // 1. Постоянный бан из переменной окружения
   if (getBlockedIps().includes(ip)) {
-    console.warn(`[BLOCKED] IP ${ip} — запрос отклонён: ${req.method} ${req.path}`);
+    console.warn(`[BLOCKED] IP ${ip}: ${req.method} ${req.path}`);
+    return res.status(403).end();
+  }
+
+  // 2. Автобан в памяти
+  const ban = autoBannedIps.get(ip);
+  if (ban) {
+    if (ban.until > Date.now()) {
+      return res.status(403).end();
+    }
+    autoBannedIps.delete(ip);
+  }
+
+  // 3. Honeypot — кто лезет в /wp-admin, /phpmyadmin и т.д. — бан навсегда в памяти
+  const honeypotPaths = ['/wp-admin', '/wp-login', '/phpmyadmin', '/.env', '/.git', '/admin.php', '/xmlrpc.php'];
+  if (honeypotPaths.some(p => req.path.startsWith(p))) {
+    autoBanIp(ip, 1440, `Honeypot: ${req.path}`); // 24 часа
+    return res.status(404).end();
+  }
+
+  // 4. Проверка на SQL-инъекции и XSS во всех входящих данных
+  const toCheck = [
+    req.path,
+    JSON.stringify(req.query),
+    JSON.stringify(req.body),
+  ].join(' ');
+
+  if (containsAttack(toCheck)) {
+    autoBanIp(ip, 60, `Атака: ${req.method} ${req.path}`);
+    console.error(`[ATTACK] IP ${ip}: ${req.method} ${req.path} | body: ${JSON.stringify(req.body)?.slice(0, 200)}`);
     return res.status(403).json({ error: 'Forbidden' });
   }
+
   next();
 });
 
