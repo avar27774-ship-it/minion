@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Component } from 'react'
-import { Users, Package, Handshake, DollarSign, ShieldCheck, MessageCircle, CreditCard, Zap, Ban, CheckCircle, XCircle, UserCheck, Trash2, Send, BarChart2, AlertTriangle, RotateCcw, LogOut, Star, Clock, TrendingUp, Settings, Radio, Eye } from '../components/Icon'
+import { Users, Package, Handshake, DollarSign, ShieldCheck, MessageCircle, CreditCard, Zap, Ban, CheckCircle, XCircle, UserCheck, Trash2, Send, BarChart2, AlertTriangle, RotateCcw, LogOut, Star, Clock, TrendingUp, Settings, Eye } from '../components/Icon'
 import toast from 'react-hot-toast'
 
 const adminFetch = async (path, opts = {}) => {
@@ -263,7 +263,7 @@ export default function AdminPage() {
     ['products',     <Package size={14}/>,       'Товары'],
     ['transactions', <CreditCard size={14}/>,    'Транзакции'],
     ['security',     <ShieldCheck size={14}/>,   'Безопасность'],
-    ['broadcast',    <Radio size={14}/>,         'Рассылка'],
+    ['broadcast',    <Send size={14}/>,           'Рассылка'],
     ['messages',     <MessageCircle size={14}/>, 'Сообщения'],
     ['settings',     <Settings size={14}/>,      'Настройки'],
   ]
