@@ -5,7 +5,7 @@ const SHOP_ID = () => process.env.RUKASSA_SHOP_ID || '';
 const SECRET  = () => process.env.RUKASSA_SECRET  || '';
 const TOKEN   = () => process.env.RUKASSA_TOKEN   || '';
 
-function isConfigured() { return !!(SHOP_ID() && SECRET()); }
+function isConfigured() { return !!(SHOP_ID() && (SECRET() || TOKEN())); }
 
 function sign(shopId, amount, orderId) {
   return crypto.createHash('md5').update(`${shopId}:${amount}:${orderId}:${SECRET()}`).digest('hex');
