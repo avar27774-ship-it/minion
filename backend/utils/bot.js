@@ -334,21 +334,18 @@ async function handleUpdate(update) {
         [user.id]
       ).catch(() => []);
 
-      context = `Данные пользователя @${user.username}:
-Баланс: $${parseFloat(user.balance||0).toFixed(2)}
-Заморожено в сделках: $${parseFloat(user.frozen_balance||0).toFixed(2)}
-Продаж всего: ${user.total_sales||0}
-Покупок всего: ${user.total_purchases||0}
-Рейтинг: ${user.rating||5.0}
-${myProducts.length > 0 ? `
-Мои активные товары:
-${myProducts.map(p=>`- ${p.title} ($${p.price})`).join('
-')}` : '
-Активных товаров нет'}
-${myDeals.length > 0 ? `
-Мои активные сделки:
-${myDeals.map(d=>`- ${d.title} | $${d.amount} | ${d.status}`).join('
-')}` : ''}`;
+      const productsText = myProducts.length > 0
+        ? 'Мои активные товары:\n' + myProducts.map(p => '- ' + p.title + ' ($' + p.price + ')').join('\n')
+        : 'Активных товаров нет';
+      const dealsText = myDeals.length > 0
+        ? 'Мои активные сделки:\n' + myDeals.map(d => '- ' + (d.title||'?') + ' | $' + d.amount + ' | ' + d.status).join('\n')
+        : '';
+      context = 'Данные пользователя @' + user.username + ':\n' +
+        'Баланс: $' + parseFloat(user.balance||0).toFixed(2) + '\n' +
+        'Заморожено: $' + parseFloat(user.frozen_balance||0).toFixed(2) + '\n' +
+        'Продаж: ' + (user.total_sales||0) + ' | Покупок: ' + (user.total_purchases||0) + '\n' +
+        'Рейтинг: ' + (user.rating||5.0) + '\n' +
+        productsText + '\n' + dealsText;
     } else {
       context = 'Пользователь не зарегистрирован на платформе.';
     }
@@ -361,16 +358,12 @@ ${myDeals.map(d=>`- ${d.title} | $${d.amount} | ${d.status}`).join('
         `SELECT title, price FROM products WHERE status='active'
          AND (LOWER(title) LIKE $1 OR LOWER(description) LIKE $1)
          LIMIT 5`,
-        [`%${searchWords.slice(0,30)}%`]
+        ['%' + searchWords.slice(0,30) + '%']
       ).catch(() => []);
       if (found.length > 0) {
-        catalogInfo = `
-Товары в каталоге по запросу "${text.slice(0,30)}":
-${found.map(p=>`- ${p.title} за $${p.price}`).join('
-')}`;
-      } else if (found.length === 0 && text.length > 5) {
-        catalogInfo = `
-Товаров по запросу "${text.slice(0,30)}" в каталоге не найдено.`;
+        catalogInfo = '\nТовары в каталоге:\n' + found.map(p => '- ' + p.title + ' за $' + p.price).join('\n');
+      } else if (text.length > 5) {
+        catalogInfo = '\nТоваров "' + text.slice(0,30) + '" в каталоге нет.';
       }
     }
 
@@ -460,4 +453,15 @@ function getBot() {
   return { username: process.env.BOT_USERNAME || '' };
 }
 
-module.exports = { getBot, handleUpdate, sendMessage, setWebhook };
+module.exports = { getBot, handleUpdate, sendMessage, setWebhook };      if (searchWords.length > 3 && !searchWords.startsWith('/')) {
+        const found = await queryAll(
+          "SELECT title, price FROM products WHERE status='active' AND (LOWER(title) LIKE $1 OR LOWER(description) LIKE $1) LIMIT 5",
+          ['%' + searchWords.slice(0,30) + '%']
+        ).catch(() => []);
+        if (found.length > 0) {
+          catalogInfo = '\nТовары в каталоге по запросу "' + text.slice(0,30) + '":\n' +
+            found.map(p => '- ' + p.title + ' за $' + p.price).join('\n');
+        } else if (text.length > 5) {
+          catalogInfo = '\nТоваров по запросу "' + text.slice(0,30) + '" в каталоге не найдено.';
+        }
+      }
