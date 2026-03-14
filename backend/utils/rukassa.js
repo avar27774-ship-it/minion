@@ -41,12 +41,17 @@ async function createInvoice({ amount, orderId, comment = '', hookUrl = '', succ
   // order_id должен быть числом (Int) по документации
   const numericOrderId = Date.now();
 
+  // user_code — ID юзера из orderId (формат: rukassa_USERID_TIMESTAMP)
+  const parts    = String(orderId).split('_');
+  const userCode = parts.length >= 2 ? parts[1] : String(numericOrderId);
+
   const params = {
     shop_id:          parseInt(SHOP_ID()),  // Int
     token:            TOKEN(),              // API токен
     order_id:         numericOrderId,       // Int
     amount:           parseFloat(amount),   // Float
     currency:         'USD',               // валюта
+    user_code:        userCode,             // Идентификатор клиента (обязателен при анти-фрод)
     data:             JSON.stringify({ original_order_id: String(orderId), comment: comment || '' }),
     notification_url: hookUrl,
     success_url:      successUrl,
