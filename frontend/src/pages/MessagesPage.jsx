@@ -201,13 +201,25 @@ export default function MessagesPage() {
                   display:'flex', justifyContent: isMine ? 'flex-end' : 'flex-start',
                 }}>
                   <div style={{
-                    maxWidth:'75%', padding:'10px 14px', borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                    maxWidth:'75%',
+                    padding: m.image ? '6px' : '10px 14px',
+                    borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                     background: isMine ? 'var(--accent)' : 'var(--bg3)',
                     color: isMine ? '#0d0d14' : 'var(--t1)',
-                    fontSize:14, lineHeight:1.5,
+                    fontSize:14, lineHeight:1.5, overflow:'hidden',
                   }}>
-                    <div>{m.text}</div>
-                    <div style={{ fontSize:10, opacity:0.6, marginTop:4, textAlign:'right' }}>
+                    {m.image && (
+                      <img
+                        src={m.image}
+                        alt="фото"
+                        style={{ width:'100%', maxWidth:260, borderRadius:12, display:'block', cursor:'pointer' }}
+                        onClick={() => window.open(m.image, '_blank')}
+                      />
+                    )}
+                    {m.text && m.text !== '📷 Фото' && (
+                      <div style={{ padding: m.image ? '6px 8px 2px' : '0' }}>{m.text}</div>
+                    )}
+                    <div style={{ fontSize:10, opacity:0.6, marginTop:4, textAlign:'right', padding: m.image ? '0 8px 4px' : '0' }}>
                       {new Date((m.created_at||0)*1000).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})}
                       {isMine && <span style={{ marginLeft:4 }}>{m.is_read ? '✓✓' : '✓'}</span>}
                     </div>
