@@ -71,8 +71,6 @@ router.get('/:userId', auth, async (req, res) => {
 router.post('/:userId', auth, async (req, res) => {
   try {
     const receiverId = req.params.userId;
-    const { text }   = req.body;
-
     const { text, image } = req.body;
     if (!text?.trim() && !image) return res.status(400).json({ error: 'Пустое сообщение' });
     if (text && text.length > 2000) return res.status(400).json({ error: 'Слишком длинное' });
