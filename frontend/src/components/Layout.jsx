@@ -1,15 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { Wallet, Handshake, FileText, RotateCcw, Mail, Zap, UserCircle, LogOut, Settings, Home, LayoutGrid, Plus, DollarSign, ShieldCheck, MessageCircle } from './Icon'
+import { Wallet, Handshake, FileText, RotateCcw, Mail, Zap, UserCircle, LogOut, Settings, Home, LayoutGrid, Plus, DollarSign, ShieldCheck, MessageCircle, Search } from './Icon'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useStore, api } from '../store'
 
 // ── Иконки для нижней навигации ────────────────────────────────────────────────
-const IconHome    = () => <Home size={22} strokeWidth={1.75}/>
-const IconGrid    = () => <LayoutGrid size={22} strokeWidth={1.75}/>
-const IconPlus    = () => <Plus size={24} strokeWidth={2}/>
-const IconDeals    = () => <Handshake size={22} strokeWidth={1.75}/>
+const IconSearch   = () => <Search size={22} strokeWidth={1.75}/>
+const IconGrid     = () => <LayoutGrid size={22} strokeWidth={1.75}/>
+const IconPlus     = () => <Plus size={26} strokeWidth={2.5}/>
 const IconMessages = () => <MessageCircle size={22} strokeWidth={1.75}/>
-const IconProfile = () => <UserCircle size={22} strokeWidth={1.75}/>
+const IconProfile  = () => <UserCircle size={22} strokeWidth={1.75}/>
 
 export default function Layout({ children }) {
   const { user, setUser, logout, refreshUser } = useStore()
@@ -364,18 +363,18 @@ export default function Layout({ children }) {
       {/* ── Mobile bottom navigation ──────────────────────────────────────────── */}
       <nav className="mobile-bottom-nav" style={{
         position:'fixed', bottom:0, left:0, right:0, zIndex:90,
-        background:'rgba(13,13,20,0.97)', backdropFilter:'blur(20px)',
-        borderTop:'1px solid var(--border)',
+        background:'rgba(13,13,20,0.98)', backdropFilter:'blur(24px)',
+        borderTop:'1px solid rgba(255,255,255,0.06)',
         display:'none', alignItems:'center',
         paddingBottom:'env(safe-area-inset-bottom)',
         height:'calc(var(--bot-nav) + env(safe-area-inset-bottom))',
+        boxShadow:'0 -4px 24px rgba(0,0,0,0.4)',
       }}>
         {[
-          { to:'/',        icon:<IconHome/>,    label:'Главная' },
+          { to:'/catalog?focus=search', icon:<IconSearch/>,   label:'Поиск' },
           { to:'/catalog', icon:<IconGrid/>,    label:'Каталог' },
           { to:'/sell',    icon:<IconPlus/>,    label:'Продать', center:true },
-          { to:'/deals',    icon:<IconDeals/>,    label:'Сделки' },
-          { to:'/messages', icon:<IconMessages/>, label:'Чат' },
+          { to:'/messages', icon:<IconMessages/>, label:'Чаты' },
           { to: user ? '/profile' : '/auth', icon:<IconProfile/>, label: user ? 'Профиль' : 'Войти' },
         ].map(item => (
           <Link key={item.to} to={item.to} style={{
@@ -386,24 +385,30 @@ export default function Layout({ children }) {
           }}>
             {item.center ? (
               <div style={{
-                width:48, height:48, borderRadius:16,
-                background:'linear-gradient(135deg, var(--accent), var(--accent2))',
+                width:52, height:52, borderRadius:16,
+                background:'linear-gradient(135deg, var(--accent), #e8a020)',
                 display:'flex', alignItems:'center', justifyContent:'center',
-                color:'#0d0d14', marginTop:-16,
-                boxShadow:'0 4px 20px rgba(245,200,66,0.5)',
+                color:'#0d0d14', marginTop:-20,
+                boxShadow:'0 4px 24px rgba(245,200,66,0.5)',
+                border:'3px solid rgba(13,13,20,0.8)',
               }}>
                 {item.icon}
               </div>
             ) : (
               <>
-                {item.icon}
-                <span style={{ fontSize:10, fontWeight:600, fontFamily:'var(--font-h)' }}>{item.label}</span>
-                {isActive(item.to) && (
-                  <span style={{
-                    position:'absolute', bottom:4, width:4, height:4,
-                    borderRadius:'50%', background:'var(--accent)',
-                  }}/>
-                )}
+                <div style={{
+                  width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center',
+                  borderRadius:8,
+                  background: isActive(item.to) ? 'rgba(245,200,66,0.12)' : 'transparent',
+                  transition:'background 0.2s',
+                }}>
+                  {item.icon}
+                </div>
+                <span style={{
+                  fontSize:10, fontWeight:700, fontFamily:'var(--font-h)',
+                  marginTop:1,
+                  color: isActive(item.to) ? 'var(--accent)' : 'var(--t3)',
+                }}>{item.label}</span>
               </>
             )}
           </Link>
