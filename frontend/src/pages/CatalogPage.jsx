@@ -96,15 +96,15 @@ export default function CatalogPage() {
       <div style={{ position:'relative', zIndex:1, maxWidth:1200, margin:'0 auto', padding:'24px 12px' }}>
       <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:32, marginBottom:24 }}>Каталог</h1>
 
-      <div style={{ display:'flex', gap:10, marginBottom:24 }}>
+      {/* Строка поиска */}
+      <div style={{ display:'flex', gap:8, marginBottom:12 }}>
         <input
           ref={searchRef}
           className="inp"
-          placeholder="🔍 Поиск товаров..."
+          placeholder="Поиск товаров..."
           value={searchInput}
           onChange={e => {
             setSearchInput(e.target.value)
-            // Мгновенный поиск с задержкой 500мс
             clearTimeout(window._searchTimer)
             window._searchTimer = setTimeout(() => {
               const ns = new URLSearchParams(sp)
@@ -113,12 +113,20 @@ export default function CatalogPage() {
               setSp(ns)
             }, 500)
           }}
-          onKeyDown={e => e.key==='Enter' && applySearch()}
-          style={{ flex:1 }}
+          onKeyDown={e => e.key === 'Enter' && applySearch()}
+          style={{ flex:1, fontSize:15 }}
         />
-        <input className="inp" placeholder="$ от" value={minP} onChange={e => setMinP(e.target.value)} style={{ width:90 }}/>
-        <input className="inp" placeholder="$ до" value={maxP} onChange={e => setMaxP(e.target.value)} style={{ width:90 }}/>
-        <button className="btn btn-primary" onClick={applySearch}>Найти</button>
+        <button className="btn btn-primary" onClick={applySearch} style={{ flexShrink:0, padding:'0 18px' }}>
+          Найти
+        </button>
+      </div>
+
+      {/* Фильтр по цене */}
+      <div style={{ display:'flex', gap:8, marginBottom:20 }}>
+        <input className="inp" placeholder="$ от" value={minP} onChange={e => setMinP(e.target.value)}
+          style={{ flex:1 }} onKeyDown={e => e.key === 'Enter' && applySearch()}/>
+        <input className="inp" placeholder="$ до" value={maxP} onChange={e => setMaxP(e.target.value)}
+          style={{ flex:1 }} onKeyDown={e => e.key === 'Enter' && applySearch()}/>
       </div>
 
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:20 }}>
