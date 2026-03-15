@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import useMeta from '../hooks/useMeta'
 import { Wallet, ArrowDownCircle, ArrowUpCircle, ShoppingCart, Handshake, RotateCcw, Zap, CreditCard, X, DollarSign } from '../components/Icon'
 import { useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
@@ -59,7 +60,12 @@ const Spinner = () => <span style={{ width:16, height:16, border:'2px solid tran
 
 export default function WalletPage() {
   const navigate = useNavigate()
-  const { user, setUser, refreshUser } = useStore()
+  useMeta({
+    title: 'Кошелёк — пополнение и вывод средств',
+    description: 'Управляйте балансом на Minions Market. Пополнение через RuKassa и CryptoPay. Вывод через CryptoBot.',
+  })
+  const {
+ user, setUser, refreshUser } = useStore()
   const [txs, setTxs]         = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal]     = useState(null)
@@ -202,8 +208,8 @@ export default function WalletPage() {
           {/* Выбор метода */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:20 }}>
             {[
-              { v:'rukassa',   icon:'🏦', label:'RuKassa',   desc:'Карта РФ, СБП' },
-              { v:'cryptopay', icon:'✈️', label:'CryptoPay', desc:'USDT, TON, BTC' },
+              { v:'rukassa',   icon:'🏦', label:'RuKassa',   desc:'Карта РФ, СБП · от $100' },
+              { v:'cryptopay', icon:'✈️', label:'CryptoPay', desc:'USDT, TON, BTC · от $2' },
             ].map(m => (
               <button key={m.v} onClick={() => setPayMethod(m.v)} style={{
                 padding:'14px 8px', borderRadius:14, cursor:'pointer', textAlign:'center', border:'1.5px solid',
@@ -217,6 +223,41 @@ export default function WalletPage() {
               </button>
             ))}
           </div>
+
+          {/* Минимальные суммы по методам */}
+          {payMethod === 'rukassa' && (
+            <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:10 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
+              {[
+                ['💳', 'Visa / MC / МИР', '$100.00'],
+                ['💳', 'Visa / MC (AZN)', '$5.50'],
+                ['🎮', 'SkinPay', '$0.10'],
+                ['💛', 'YooMoney', '$11.00'],
+                ['🔐', 'Крипта (через RuKassa)', '$0.50'],
+              ].map(([icon, label, min]) => (
+                <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)' }}>{min}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {payMethod === 'cryptopay' && (
+            <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:10 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
+              {[
+                ['💎', 'USDT', '$2.00'],
+                ['🔷', 'TON', '$2.00'],
+                ['₿', 'BTC', '$2.00'],
+                ['🔹', 'ETH', '$2.00'],
+              ].map(([icon, label, min]) => (
+                <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)' }}>{min}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Быстрые суммы */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:14 }}>
