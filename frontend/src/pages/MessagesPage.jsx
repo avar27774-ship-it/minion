@@ -15,6 +15,7 @@ export default function MessagesPage() {
   const [text,     setText]     = useState('')
   const [loading,  setLoading]  = useState(true)
   const [sending,  setSending]  = useState(false)
+  const [viewImg,  setViewImg]  = useState(null)  // полноэкранный просмотр фото
   const [image,    setImage]    = useState(null)   // base64 превью
   const fileRef = useRef(null)
   const bottomRef = useRef(null)
@@ -213,7 +214,7 @@ export default function MessagesPage() {
                         src={m.image}
                         alt="фото"
                         style={{ width:'100%', maxWidth:260, borderRadius:12, display:'block', cursor:'pointer' }}
-                        onClick={() => window.open(m.image, '_blank')}
+                        onClick={() => setViewImg(m.image)}
                       />
                     )}
                     {m.text && m.text !== '📷 Фото' && (
@@ -285,6 +286,28 @@ export default function MessagesPage() {
               <Send size={18} strokeWidth={2}/>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Просмотр фото */}
+      {viewImg && (
+        <div onClick={() => setViewImg(null)} style={{
+          position:'fixed', inset:0, zIndex:999,
+          background:'rgba(0,0,0,0.95)',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          padding:16,
+        }}>
+          <img src={viewImg} alt="фото" style={{
+            maxWidth:'100%', maxHeight:'100%',
+            borderRadius:12, objectFit:'contain',
+          }}/>
+          <button onClick={() => setViewImg(null)} style={{
+            position:'absolute', top:16, right:16,
+            width:40, height:40, borderRadius:'50%',
+            background:'rgba(255,255,255,0.15)', border:'none',
+            color:'#fff', fontSize:20, cursor:'pointer',
+            display:'flex', alignItems:'center', justifyContent:'center',
+          }}>✕</button>
         </div>
       )}
 
