@@ -53,10 +53,10 @@ router.get('/', async (req, res) => {
     const params     = [];
     let   pidx       = 1;
 
-    // Full-text search via PostgreSQL tsvector
+    // Простой поиск по названию и описанию
     if (search && search.trim()) {
-      conditions.push(`to_tsvector('russian', p.title || ' ' || p.description) @@ plainto_tsquery('russian', $${pidx})`);
-      params.push(search.trim());
+      conditions.push(`(p.title ILIKE $${pidx} OR p.description ILIKE $${pidx} OR p.category ILIKE $${pidx})`);
+      params.push('%' + search.trim() + '%');
       pidx++;
     }
     if (category) { conditions.push(`p.category = $${pidx}`); params.push(category); pidx++; }
