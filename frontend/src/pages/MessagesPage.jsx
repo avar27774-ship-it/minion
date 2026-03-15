@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { api, useStore } from '../store'
-import { ArrowLeft, Send, Image } from '../components/Icon'
+import { ArrowLeft, Send, Camera } from '../components/Icon'
 import toast from 'react-hot-toast'
 
 export default function MessagesPage() {
@@ -243,7 +243,7 @@ export default function MessagesPage() {
               cursor:'pointer', display:'flex', alignItems:'center',
               justifyContent:'center', color:'var(--t3)',
             }}>
-              <Image size={18} strokeWidth={1.75}/>
+              <Camera size={18} strokeWidth={1.75}/>
             </button>
 
             <textarea
