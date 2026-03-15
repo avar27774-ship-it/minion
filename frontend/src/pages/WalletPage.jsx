@@ -88,7 +88,11 @@ export default function WalletPage() {
     if (!amt || amt < 2) return toast.error('Минимум $2')
     setWorking(true)
     try {
-      const endpoint = payMethod === 'cryptopay' ? '/wallet/deposit/cryptopay' : '/wallet/deposit/rukassa'
+      const endpoint = payMethod === 'cryptopay'
+        ? '/wallet/deposit/cryptopay'
+        : payMethod === 'nowpayments'
+        ? '/wallet/deposit/nowpayments'
+        : '/wallet/deposit/rukassa'
       const { data } = await api.post(endpoint, { amount: amt })
       if (data.payUrl) {
         window.open(data.payUrl, '_blank')
@@ -208,8 +212,9 @@ export default function WalletPage() {
           {/* Выбор метода */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:20 }}>
             {[
-              { v:'rukassa',   icon:'🏦', label:'RuKassa',   desc:'Карта РФ, СБП · от $100' },
-              { v:'cryptopay', icon:'✈️', label:'CryptoPay', desc:'USDT, TON, BTC · от $2' },
+              { v:'rukassa',     icon:'🏦', label:'RuKassa',     desc:'Карта РФ, СБП · от $100' },
+              { v:'cryptopay',   icon:'✈️', label:'CryptoPay',   desc:'USDT, TON · от $2' },
+              { v:'nowpayments', icon:'🌍', label:'NOWPayments',  desc:'350+ крипт · от $1' },
             ].map(m => (
               <button key={m.v} onClick={() => setPayMethod(m.v)} style={{
                 padding:'14px 8px', borderRadius:14, cursor:'pointer', textAlign:'center', border:'1.5px solid',
@@ -234,6 +239,23 @@ export default function WalletPage() {
                 ['🎮', 'SkinPay', '$0.10'],
                 ['💛', 'YooMoney', '$11.00'],
                 ['🔐', 'Крипта (через RuKassa)', '$0.50'],
+              ].map(([icon, label, min]) => (
+                <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)' }}>{min}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {payMethod === 'nowpayments' && (
+            <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:8 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
+              {[
+                ['💎','USDT (TRC20/ERC20)','$1.00'],
+                ['🔷','TON','$1.00'],
+                ['₿','BTC','$1.00'],
+                ['🔹','ETH','$1.00'],
+                ['🌐','350+ других криптовалют','$1.00'],
               ].map(([icon, label, min]) => (
                 <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
                   <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
