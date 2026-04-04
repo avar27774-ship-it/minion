@@ -168,10 +168,11 @@ router.post('/:id/deliver', auth, async (req, res) => {
     });
 
     const buyer   = await queryOne('SELECT * FROM users WHERE id = $1', [deal.buyer_id]);
+    const seller  = await queryOne('SELECT username FROM users WHERE id = $1', [deal.seller_id]);
+    const buyer   = await queryOne('SELECT * FROM users WHERE id = $1', [deal.buyer_id]);
+    const seller  = await queryOne('SELECT username FROM users WHERE id = $1', [deal.seller_id]);
     const product = await queryOne('SELECT title FROM products WHERE id = $1', [deal.product_id]);
-    if (buyer?.telegram_id) notify.notifyMessage(buyer, 'Продавец', product?.title || 'Сделка').catch(() => {});
-
-    res.json({ ok: true });
+    if (buyer?.telegram_id) notify.notifyDelivered(buyer, product?.title || 'Товар', seller?.username || '?').catch(() => {});
   } catch (e) {
     res.status(500).json({ error: 'Ошибка' });
   }
@@ -228,7 +229,7 @@ router.post('/:id/refund', auth, async (req, res) => {
       queryOne('SELECT * FROM users WHERE id = $1', [deal.seller_id]),
       queryOne('SELECT title FROM products WHERE id = $1', [deal.product_id]),
     ]);
-    notify.notifyDealDispute && notify.notifyDealDispute(buyer, seller, product?.title||'').catch(() => {});
+    notify.notifyDealRefund(buyer, product?.title||'', deal.amount).catch(() => {});
 
     res.json({ ok: true });
   } catch (e) {
@@ -331,6 +332,12 @@ router.post('/:id/review', auth, async (req, res) => {
 
     const stats = await queryOne(`SELECT AVG(rating) as avg, COUNT(*) as cnt FROM reviews WHERE reviewed_id = $1`, [deal.seller_id]);
     await run('UPDATE users SET rating = $1, review_count = $2 WHERE id = $3',
+
+    // Уведомляем продавца о новом отзыве
+    const reviewer = await queryOne('SELECT username FROM users WHERE id = $1', [req.userId]).catch(()=>null);
+    const seller   = await queryOne('SELECT telegram_id FROM users WHERE id = $1', [deal.seller_id]).catch(()=>null);
+    const product  = await queryOne('SELECT title FROM products WHERE id = $1', [deal.product_id]).catch(()=>null);
+    if (seller?.telegram_id) notify.notifyReview(seller, reviewer?.username||'?', parseInt(rating), text?.slice(0,200)||'').catch(()=>{});
       [Math.round(parseFloat(stats.avg) * 10) / 10, parseInt(stats.cnt), deal.seller_id]);
 
     res.json({ ok: true });
