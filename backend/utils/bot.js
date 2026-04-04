@@ -78,11 +78,16 @@ function askClaude(system, userMsg) {
 function setWebhook() {
   const token = TOKEN();
   const base  = BASE_URL();
+  console.log('[Bot] setWebhook called. TOKEN exists:', !!token, 'BASE_URL:', base || '(empty)');
   if (!token || !base) {
     console.warn('[Bot] TELEGRAM_BOT_TOKEN или BACKEND_URL не заданы');
+    console.warn('[Bot] TOKEN length:', token?.length || 0, '| BASE_URL:', base || '(not set)');
     return;
   }
-  const webhookUrl = base + '/api/tg-webhook/' + token;
+  // На Vercel backend доступен через /_/backend/, локально — напрямую
+  const prefix = base.includes('vercel') || base.includes('.app') ? '/_/backend' : '';
+  const webhookUrl = base + prefix + '/api/tg-webhook/' + token;
+  console.log('[Bot] Registering webhook:', webhookUrl);
   const body = JSON.stringify({ url: webhookUrl, drop_pending_updates: true });
   const req = https.request({
     hostname: 'api.telegram.org',
@@ -330,7 +335,7 @@ async function handleUpdate(update) {
       '🎉 <b>Добро пожаловать в партнёрскую программу!</b>\n\n' +
       '🔗 Ваша реферальная ссылка:\n<code>' + refLink + '</code>\n\n' +
       '💰 Ваш процент: <b>' + percent + '%</b> с каждой сделки\n\n' +
-      'Поделитесь ссылкой — и зарабатывайте автоматически!\n\n' +
+      'Поделитесь ссылкой — и зарабатывайте автоматичес��и!\n\n' +
       '/refstats — ваша статистика'
     );
     return;
