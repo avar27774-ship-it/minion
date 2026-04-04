@@ -26,25 +26,26 @@ function sendMessage(chatId, text, opts = {}) {
   });
 }
 
-// ── Запрос к Claude ───────────────────────────────────────────────────────────
-function askClaude(system, userMsg) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+// ── Запрос к Grok (xAI) ──────────────────────────────────────────────────────
+function askGrok(system, userMsg) {
+  const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return Promise.resolve('AI временно недоступен.');
   return new Promise((resolve) => {
     const body = JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: process.env.GROK_MODEL || 'grok-3-mini',
       max_tokens: 500,
-      system: system,
-      messages: [{ role: 'user', content: userMsg }],
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user',   content: userMsg },
+      ],
     });
     const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
+      hostname: 'api.x.ai',
+      path: '/v1/chat/completions',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': 'Bearer ' + apiKey,
         'Content-Length': Buffer.byteLength(body),
       },
     }, (r) => {
@@ -54,19 +55,19 @@ function askClaude(system, userMsg) {
         try {
           const json = JSON.parse(data);
           if (json.error) {
-            console.error('[Bot] Claude API error:', json.error);
+            console.error('[Bot] Grok API error:', json.error);
             resolve('Сервис временно недоступен. Попробуйте позже.');
           } else {
-            resolve(json?.content?.[0]?.text || 'Не могу ответить.');
+            resolve(json?.choices?.[0]?.message?.content || 'Не могу ответить.');
           }
         } catch(e) {
-          console.error('[Bot] Claude parse error:', e.message);
+          console.error('[Bot] Grok parse error:', e.message);
           resolve('Ошибка обработки ответа.');
         }
       });
-      r.on('error', (e) => { resolve('Ошибка соединения.'); });
+      r.on('error', () => resolve('Ошибка соединения.'));
     });
-    req.on('error', (e) => { resolve('Ошибка соединения.'); });
+    req.on('error', () => resolve('Ошибка соединения.'));
     req.setTimeout(30000, () => { req.destroy(); resolve('Время ожидания истекло.'); });
     req.write(body);
     req.end();
@@ -161,14 +162,21 @@ async function handleUpdate(update) {
     const adminCmds = isAdmin(chatId)
       ? '\n\n🔧 <b>Админ:</b>\n• /report — отчёт\n• /monitor — проверка сайта\n• /top — топ продавцов и товаров\n• /radar — подозрительные юзеры\n• /dead — мёртвые товары\n• /vibe — настроение рынка AI\n• /predict — прогноз категорий AI\n• /freeze [логин] — заморозить\n• /msg [логин] [текст] — написать\n• /promo [код] [%] — промокод\n• /ai_on /ai_off /ai_status'
       : '';
+    const miniAppUrl = process.env.FRONTEND_URL || process.env.BACKEND_URL || '';
     await sendMessage(chatId,
-      '🟡 <b>Minions Market Bot</b>\n\n' +
+      '🟡 <b>Minions Market</b>\n\n' +
       'Команды:\n' +
       '• /code [логин] — код для входа\n' +
       '• /reset [логин] — сброс пароля\n' +
-      '• /quest — ежедневные задания\n' +
       '• /casino — попытать удачу\n' +
-      '• /help — помощь' + adminCmds
+      '• /help — помощь' + adminCmds,
+      miniAppUrl ? {
+        reply_markup: JSON.stringify({
+          inline_keyboard: [[
+            { text: '🛍 Открыть маркетплейс', web_app: { url: miniAppUrl } }
+          ]]
+        })
+      } : {}
     );
     return;
   }
@@ -182,7 +190,6 @@ async function handleUpdate(update) {
       '🟡 <b>Minions Market — Помощь</b>\n\n' +
       '/code [логин] — код для регистрации\n' +
       '/reset [логин] — сброс пароля\n' +
-      '/quest — ежедневные задания\n' +
       '/casino — мини-лотерея\n' +
       '/partner — партнёрская программа\n\n' +
       'По вопросам: @givi_hu' + adminCmds
@@ -447,7 +454,7 @@ async function handleUpdate(update) {
         '- Новых товаров: ' + newProds.c + '\n' +
         (topCats.length > 0 ? '- Топ категории: ' + topCats.map(c => c.category + '(' + c.c + ')').join(', ') : '');
 
-      const vibeText = await askClaude(
+      const vibeText = await askGrok(
         'Ты аналитик маркетплейса игровых товаров. Отвечай ТОЛЬКО на русском. Будь кратким — максимум 5 предложений. Используй эмодзи. Оцени "настроение рынка" и дай 1 практический совет для владельца.',
         statsText
       );
@@ -482,7 +489,7 @@ async function handleUpdate(update) {
         '\n\nПросмотры товаров:\n' +
         (views.length > 0 ? views.map(v => v.category + ': ' + v.v + ' просмотров').join('\n') : 'нет данных');
 
-      const prediction = await askClaude(
+      const prediction = await askGrok(
         'Ты аналитик маркетплейса игровых товаров. Отвечай ТОЛЬКО на русском. Будь конкретен. Формат: назови 3 категории-лидера следующей недели с коротким обоснованием. Затем 1 категория которую стоит продвинуть. Максимум 8 предложений.',
         statsText
       );
@@ -724,68 +731,7 @@ async function handleUpdate(update) {
     return;
   }
 
-  // ── /quest — ежедневные задания ───────────────────────────────────────────
-  if (text === '/quest') {
-    try {
-      const user = await queryOne('SELECT * FROM users WHERE telegram_id=$1', [String(chatId)]).catch(() => null);
-      if (!user) {
-        await sendMessage(chatId, '❌ Зарегистрируйтесь на сайте.\n/code [логин] — регистрация');
-        return;
-      }
 
-      const todayStart = Math.floor(new Date().setHours(0,0,0,0) / 1000);
-
-      // Считаем прогресс заданий за сегодня
-      const dealsToday = await queryOne(
-        "SELECT COUNT(*) as c FROM deals WHERE (buyer_id=$1 OR seller_id=$1) AND created_at > $2 AND status='completed'",
-        [user.id, todayStart]
-      ).catch(() => ({c:0}));
-
-      const prodsToday = await queryOne(
-        "SELECT COUNT(*) as c FROM products WHERE seller_id=$1 AND created_at > $2",
-        [user.id, todayStart]
-      ).catch(() => ({c:0}));
-
-      const tasks = [
-        {
-          name: '💬 Заполни профиль',
-          done: !!(user.avatar || user.bio),
-          reward: '$0.50',
-        },
-        {
-          name: '🛒 Совершить 1 сделку сегодня',
-          done: dealsToday.c >= 1,
-          reward: '$1.00',
-        },
-        {
-          name: '📦 Разместить товар',
-          done: prodsToday.c >= 1,
-          reward: '$0.30',
-        },
-        {
-          name: '🏆 3 сделки за день',
-          done: dealsToday.c >= 3,
-          reward: '$2.00',
-        },
-      ];
-
-      const done  = tasks.filter(t => t.done).length;
-      const total = tasks.length;
-      const bar   = '▓'.repeat(done) + '░'.repeat(total - done);
-
-      let msg = '📋 <b>Ежедневные задания</b>\n';
-      msg += bar + ' ' + done + '/' + total + '\n\n';
-
-      tasks.forEach(t => {
-        msg += (t.done ? '✅' : '⬜') + ' ' + t.name + ' → <b>' + t.reward + '</b>\n';
-      });
-
-      msg += '\n💡 Выполняй задания — зарабатывай бонусы на баланс каждый день!';
-
-      await sendMessage(chatId, msg);
-    } catch(e) { await sendMessage(chatId, '❌ Ошибка: ' + e.message); }
-    return;
-  }
 
   // ── /partner ──────────────────────────────────────────────────────────────
   if (text === '/partner') {
@@ -880,7 +826,7 @@ async function handleUpdate(update) {
 
   // ── Свободный чат с AI ────────────────────────────────────────────────────
   try {
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.XAI_API_KEY) {
       await sendMessage(chatId, 'AI временно недоступен. Используйте /help для списка команд.');
       return;
     }
@@ -933,7 +879,7 @@ async function handleUpdate(update) {
       ? 'Ты умный AI-ассистент хозяина маркетплейса Minions Market (игровые товары, аккаунты, валюта). Общайся свободно и естественно по-русски. Помогай с вопросами о сайте, бизнесе, статистике.'
       : 'Ты помощник маркетплейса Minions Market. Общайся дружелюбно по-русски.\n\nПРАВИЛА:\n- Показывай только данные ЭТОГО пользователя\n- Никогда не раскрывай данные других\n- На вопросы не по теме сайта: "Я помогаю только по вопросам маркетплейса"\n\nО платформе: игровые товары, комиссия 5%, эскроу защита, пополнение RuKassa/CryptoPay.';
 
-    const answer = await askClaude(systemPrompt, userContext + catalogContext + '\n\nСообщение: ' + text);
+    const answer = await askGrok(systemPrompt, userContext + catalogContext + '\n\nСообщение: ' + text);
     await sendMessage(chatId, answer);
 
     if (!isOwner && process.env.REPORT_CHAT_ID) {
