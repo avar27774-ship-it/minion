@@ -507,9 +507,13 @@ async function handleUpdate(update) {
       if (user.is_frozen) {
         await run('UPDATE users SET is_frozen=0 WHERE id=$1', [user.id]);
         await sendMessage(chatId, '✅ Пользователь @' + username + ' <b>разморожен</b>.');
+        const _uf = await queryOne('SELECT telegram_id, username FROM users WHERE id=$1', [user.id]).catch(()=>null);
+        if (_uf?.telegram_id) { const n = require('./notify'); n.notifyUnfrozen(_uf).catch(()=>{}); }
       } else {
         await run('UPDATE users SET is_frozen=1 WHERE id=$1', [user.id]);
         await sendMessage(chatId, '🧊 Пользователь @' + username + ' <b>заморожен</b>.\n\nПовторите команду для разморозки.');
+        const _fr = await queryOne('SELECT telegram_id, username FROM users WHERE id=$1', [user.id]).catch(()=>null);
+        if (_fr?.telegram_id) { const n = require('./notify'); n.notifyFrozen(_fr).catch(()=>{}); }
       }
     } catch(e) { await sendMessage(chatId, '❌ Ошибка: ' + e.message); }
     return;
