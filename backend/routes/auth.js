@@ -255,5 +255,94 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
+// ── POST /auth/tg-webapp ── авторизация через Telegram Mini App ───────────────
+router.post('/tg-webapp', async (req, res) => {
+  try {
+    const { initData } = req.body;
+    if (!initData) return res.status(400).json({ error: 'initData required' });
+
+    // Верифицируем подпись Telegram
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) return res.status(500).json({ error: 'Bot not configured' });
+
+    const params = new URLSearchParams(initData);
+    const hash = params.get('hash');
+    params.delete('hash');
+
+    // Сортируем параметры и создаём строку для проверки
+    const checkString = [...params.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n');
+
+    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(token).digest();
+    const expectedHash = crypto.createHmac('sha256', secretKey).update(checkString).digest('hex');
+
+    if (expectedHash !== hash) {
+      return res.status(401).json({ error: 'Invalid Telegram signature' });
+    }
+
+    // Проверяем свежесть данных (не старше 1 часа)
+    const authDate = parseInt(params.get('auth_date') || '0');
+    if (Date.now() / 1000 - authDate > 3600) {
+      return res.status(401).json({ error: 'initData expired' });
+    }
+
+    // Парсим данные пользователя
+    let tgUser;
+    try { tgUser = JSON.parse(params.get('user') || '{}'); } catch { tgUser = {}; }
+
+    const tgId = String(tgUser.id || '');
+    if (!tgId) return res.status(400).json({ error: 'No user in initData' });
+
+    // Ищем существующего пользователя по telegram_id
+    let user = await queryOne('SELECT * FROM users WHERE telegram_id = $1', [tgId]);
+
+    if (!user) {
+      // Авто-регистрация: генерируем username из имени Telegram
+      const firstName = (tgUser.first_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const baseUsername = (firstName || 'user') + '_' + tgId.slice(-4);
+      let username = baseUsername.slice(0, 24);
+
+      // Проверяем уникальность
+      const exists = await queryOne('SELECT id FROM users WHERE username = $1', [username]);
+      if (exists) username = 'tg' + tgId.slice(-8);
+
+      const userId = require('crypto').randomUUID();
+      await run(
+        `INSERT INTO users (id, username, telegram_id, first_name, last_name, photo_url, created_at, last_active)
+         VALUES ($1,$2,$3,$4,$5,$6,EXTRACT(EPOCH FROM NOW())::BIGINT,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+        [userId, username, tgId,
+         tgUser.first_name || null,
+         tgUser.last_name  || null,
+         tgUser.photo_url  || null]
+      );
+      user = await queryOne('SELECT * FROM users WHERE id = $1', [userId]);
+      notify.notifyRegistered(user).catch(() => {});
+    } else {
+      // Обновляем last_active и данные профиля
+      await run(
+        `UPDATE users SET last_active = EXTRACT(EPOCH FROM NOW())::BIGINT,
+         first_name = COALESCE($1, first_name),
+         last_name  = COALESCE($2, last_name)
+         WHERE id = $3`,
+        [tgUser.first_name || null, tgUser.last_name || null, user.id]
+      );
+    }
+
+    if (user.is_banned) {
+      const exp = user.banned_until ? new Date(user.banned_until * 1000).toLocaleString('ru') : 'навсегда';
+      return res.status(403).json({ error: `Аккаунт заблокирован до ${exp}` });
+    }
+
+    const jwtToken = generateToken(user.id);
+    res.json({ token: jwtToken, user: sanitizeUser(user), isNew: !user.password });
+  } catch (e) {
+    console.error('[TgWebApp] auth error:', e.message);
+    res.status(500).json({ error: 'Ошибка авторизации' });
+  }
+});
+
+
 module.exports = router;
 module.exports.sanitizeUser = sanitizeUser;
