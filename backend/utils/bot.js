@@ -85,7 +85,7 @@ function setWebhook() {
     return;
   }
   // На Vercel backend доступен через /_/backend/, локально — напрямую
-  const prefix = base.includes('vercel') || base.includes('.app') ? '/_/backend' : '';
+  const prefix = base.includes('vercel') ? '/_/backend' : '';
   const webhookUrl = base + prefix + '/api/tg-webhook/' + token;
   console.log('[Bot] Registering webhook:', webhookUrl);
   const body = JSON.stringify({ url: webhookUrl, drop_pending_updates: true });
