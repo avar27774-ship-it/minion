@@ -10,6 +10,7 @@ const AUTO_COMPLETE_HOURS = 72;
 function parseDeal(d) {
   if (!d) return null;
   d._id          = d.id;
+  d.dealNumber   = d.deal_number ? '#' + String(d.deal_number).padStart(5, '0') : null;
   d.amount       = parseFloat(d.amount);
   d.sellerAmount = parseFloat(d.seller_amount);
   d.commission   = parseFloat(d.commission);
@@ -124,8 +125,8 @@ router.post('/', auth, async (req, res) => {
       );
       await client.query(`UPDATE products SET status = 'frozen' WHERE id = $1`, [productId]);
       await client.query(`
-        INSERT INTO deals (id, buyer_id, seller_id, product_id, amount, seller_amount, commission, status, auto_complete_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8)
+        INSERT INTO deals (id, deal_number, buyer_id, seller_id, product_id, amount, seller_amount, commission, status, auto_complete_at)
+        VALUES ($1, nextval('deal_number_seq'), $2, $3, $4, $5, $6, $7, 'active', $8)
       `, [dealId, req.userId, product.seller_id, productId, amount, sellerAmount, commission, autoComplete]);
       await client.query(`
         INSERT INTO transactions (id, user_id, type, amount, status, description, deal_id, balance_before, balance_after)
@@ -384,9 +385,9 @@ async function completeDeal(deal, reason = 'auto') {
       `UPDATE users SET frozen_balance = frozen_balance - $1, total_purchases = total_purchases + 1 WHERE id = $2`,
       [amount, deal.buyer_id]
     );
-    await client.query(`UPDATE products SET status = 'sold' WHERE id = $1`, [deal.product_id]);
+    await client.query(`UPDATE products SET status = 'sold', sold_count = sold_count + 1 WHERE id = $1`, [deal.product_id]);
     await client.query(
-      `UPDATE deals SET status = 'completed', buyer_confirmed = 1, updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT WHERE id = $1`,
+      `UPDATE deals SET status = 'completed', buyer_confirmed = 1, completed_at = EXTRACT(EPOCH FROM NOW())::BIGINT, updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT WHERE id = $1`,
       [deal.id]
     );
     await client.query(`
