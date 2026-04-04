@@ -169,8 +169,6 @@ router.post('/:id/deliver', auth, async (req, res) => {
 
     const buyer   = await queryOne('SELECT * FROM users WHERE id = $1', [deal.buyer_id]);
     const seller  = await queryOne('SELECT username FROM users WHERE id = $1', [deal.seller_id]);
-    const buyer   = await queryOne('SELECT * FROM users WHERE id = $1', [deal.buyer_id]);
-    const seller  = await queryOne('SELECT username FROM users WHERE id = $1', [deal.seller_id]);
     const product = await queryOne('SELECT title FROM products WHERE id = $1', [deal.product_id]);
     if (buyer?.telegram_id) notify.notifyDelivered(buyer, product?.title || 'Товар', seller?.username || '?').catch(() => {});
   } catch (e) {
