@@ -285,19 +285,21 @@ router.get('/products', async (req, res) => {
 });
 
 router.delete('/products/:id', async (req, res) => {
-  try { await run(`UPDATE products SET status = 'deleted' WHERE id = $1`, [req.params.id]); res.json({ ok: true }); }
-    const _delProd = await require('../models/db').queryOne('SELECT p.title, u.telegram_id, u.username FROM products p JOIN users u ON u.id=p.seller_id WHERE p.id=$1', [req.params.id]).catch(()=>null);
+  try {
+    const _delProd = await queryOne('SELECT p.title, u.telegram_id, u.username FROM products p JOIN users u ON u.id=p.seller_id WHERE p.id=$1', [req.params.id]).catch(()=>null);
+    await run(`UPDATE products SET status = 'deleted' WHERE id = $1`, [req.params.id]);
     if (_delProd?.telegram_id) require('../utils/notify').notifyProductDeleted({telegram_id:_delProd.telegram_id,username:_delProd.username}, _delProd.title, req.body?.reason||'').catch(()=>{});
-  catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
 router.post('/products/:id/promote', async (req, res) => {
   try {
     const { hours = 24 } = req.body;
+    const _promProd = await queryOne('SELECT p.title, u.telegram_id, u.username FROM products p JOIN users u ON u.id=p.seller_id WHERE p.id=$1', [req.params.id]).catch(()=>null);
     await run(`UPDATE products SET is_promoted = 1, promoted_until = $1 WHERE id = $2`, [Math.floor(Date.now() / 1000) + parseInt(hours) * 3600, req.params.id]);
-    res.json({ ok: true });
-    const _promProd = await require('../models/db').queryOne('SELECT p.title, u.telegram_id, u.username FROM products p JOIN users u ON u.id=p.seller_id WHERE p.id=$1', [req.params.id]).catch(()=>null);
     if (_promProd?.telegram_id) require('../utils/notify').notifyProductPromoted({telegram_id:_promProd.telegram_id,username:_promProd.username}, _promProd.title, hours).catch(()=>{});
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
