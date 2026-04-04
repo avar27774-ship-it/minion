@@ -342,8 +342,6 @@ router.post('/users/:id/remove-subadmin', async (req, res) => {
   catch (e) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-module.exports = router;
-
 // ── GET /admin/stats/detailed — детальная статистика ─────────────────────────
 router.get('/stats/detailed', async (req, res) => {
   try {
@@ -553,3 +551,5 @@ router.get('/security-logs', async (req, res) => {
     res.json(logs);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+module.exports = router;

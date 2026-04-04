@@ -401,6 +401,11 @@ async function completeDeal(deal, reason = 'auto') {
 
     notify.notifyDealComplete(buyer, seller, product?.title || '', sellerAmount).catch(() => {});
   });
+
+  // Начисляем реферальное вознаграждение партнёру
+  await payReferralReward(deal.seller_id, deal.id, parseFloat(deal.amount)).catch(e => {
+    console.error('[Referral] Error:', e.message);
+  });
 }
 
 module.exports = router;
