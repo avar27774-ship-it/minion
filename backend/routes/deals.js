@@ -330,13 +330,13 @@ router.post('/:id/review', auth, async (req, res) => {
 
     const stats = await queryOne(`SELECT AVG(rating) as avg, COUNT(*) as cnt FROM reviews WHERE reviewed_id = $1`, [deal.seller_id]);
     await run('UPDATE users SET rating = $1, review_count = $2 WHERE id = $3',
+      [Math.round(parseFloat(stats.avg) * 10) / 10, parseInt(stats.cnt), deal.seller_id]);
 
     // Уведомляем продавца о новом отзыве
     const reviewer = await queryOne('SELECT username FROM users WHERE id = $1', [req.userId]).catch(()=>null);
     const seller   = await queryOne('SELECT telegram_id FROM users WHERE id = $1', [deal.seller_id]).catch(()=>null);
     const product  = await queryOne('SELECT title FROM products WHERE id = $1', [deal.product_id]).catch(()=>null);
     if (seller?.telegram_id) notify.notifyReview(seller, reviewer?.username||'?', parseInt(rating), text?.slice(0,200)||'').catch(()=>{});
-      [Math.round(parseFloat(stats.avg) * 10) / 10, parseInt(stats.cnt), deal.seller_id]);
 
     res.json({ ok: true });
   } catch (e) {
