@@ -501,6 +501,7 @@ async function handleUpdate(update) {
       return;
     }
     try {
+      await run('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_frozen INTEGER DEFAULT 0').catch(() => {});
       const user = await queryOne('SELECT id, username, is_frozen FROM users WHERE username=$1', [username]);
       if (!user) { await sendMessage(chatId, '❌ Пользователь <b>' + username + '</b> не найден.'); return; }
       if (user.is_frozen) {
