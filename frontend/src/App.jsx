@@ -55,7 +55,6 @@ function useTelegramViewport() {
     }
 
     if (tg) {
-      // Используем стабильную высоту (не прыгает при появлении клавиатуры)
       const apply = () => {
         const h = tg.viewportStableHeight || tg.viewportHeight || window.innerHeight
         setHeight(h)
@@ -64,7 +63,6 @@ function useTelegramViewport() {
       tg.onEvent('viewportChanged', apply)
       return () => tg.offEvent('viewportChanged', apply)
     } else {
-      // Браузер — используем visualViewport если доступен
       const apply = () => {
         const h = window.visualViewport?.height || window.innerHeight
         setHeight(h)
@@ -80,7 +78,7 @@ function useTelegramViewport() {
   }, [])
 }
 
-// Telegram Mini App авто-логин
+// ── Telegram Mini App авто-логин ──────────────────────────────────────────────
 function TelegramWebAppAuth({ children }) {
   const { user, setUser } = useStore()
   const [tgReady, setTgReady] = useState(false)
@@ -94,7 +92,26 @@ function TelegramWebAppAuth({ children }) {
     tg.setHeaderColor('#0d0d14')
     tg.setBackgroundColor('#0d0d14')
 
-    if (user) { setTgReady(true); return }
+    // Извлекаем TG id текущего аккаунта из initData
+    let tgUserId = null
+    try {
+      const params = new URLSearchParams(tg.initData)
+      const tgUserData = JSON.parse(params.get('user') || '{}')
+      tgUserId = String(tgUserData.id || '')
+    } catch (e) {}
+
+    // Если в сторе уже есть юзер — сравниваем telegram_id
+    // Совпадает → тот же аккаунт, запрос не нужен
+    // Не совпадает → другой TG аккаунт, сбрасываем старый токен
+    if (user && tgUserId) {
+      const storedTgId = String(user.telegramId || user.telegram_id || '')
+      if (storedTgId && storedTgId === tgUserId) {
+        setTgReady(true)
+        return
+      }
+      // Другой аккаунт — вычищаем старую сессию
+      localStorage.removeItem('mn_token')
+    }
 
     api.post('/auth/tg-webapp', { initData: tg.initData })
       .then(({ data }) => {
