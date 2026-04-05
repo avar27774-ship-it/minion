@@ -13,6 +13,79 @@ const blockedIps = new Map(); // ip -> { until, attempts }
 // 2FA коды в памяти: ip -> { code, expires }
 const twoFaCodes = new Map();
 
+// ── POST /admin/tg-login — вход через Telegram Mini App ─────────────────────
+// Если telegram_id == REPORT_CHAT_ID → выдаём admin token (суперадмин)
+// Если пользователь is_admin или is_sub_admin → выдаём admin token (субадмин)
+// Иначе → выдаём обычный user token (вход как пользователь)
+router.post('/tg-login', async (req, res) => {
+  try {
+    const { initData } = req.body;
+    if (!initData) return res.status(400).json({ error: 'initData required' });
+
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) return res.status(500).json({ error: 'Bot not configured' });
+
+    // Верифицируем подпись Telegram
+    const crypto2 = require('crypto');
+    const params = new URLSearchParams(initData);
+    const hash = params.get('hash');
+    params.delete('hash');
+
+    const checkString = [...params.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n');
+
+    const secretKey = crypto2.createHmac('sha256', 'WebAppData').update(botToken).digest();
+    const expectedHash = crypto2.createHmac('sha256', secretKey).update(checkString).digest('hex');
+
+    if (expectedHash !== hash) {
+      return res.status(401).json({ error: 'Invalid Telegram signature' });
+    }
+
+    // Проверяем свежесть (не старше 1 часа)
+    const authDate = parseInt(params.get('auth_date') || '0');
+    if (Date.now() / 1000 - authDate > 3600) {
+      return res.status(401).json({ error: 'initData expired' });
+    }
+
+    let tgUser;
+    try { tgUser = JSON.parse(params.get('user') || '{}'); } catch { tgUser = {}; }
+    const tgId = String(tgUser.id || '');
+    if (!tgId) return res.status(400).json({ error: 'No user in initData' });
+
+    // Суперадмин — telegram_id совпадает с REPORT_CHAT_ID
+    const isSuperAdmin = tgId === String(process.env.REPORT_CHAT_ID || '').trim();
+
+    if (isSuperAdmin) {
+      const adminToken = generateAdminToken();
+      return res.json({ ok: true, role: 'superadmin', adminToken });
+    }
+
+    // Ищем пользователя в БД
+    const user = await queryOne('SELECT * FROM users WHERE telegram_id = $1', [tgId]);
+
+    if (user && (user.is_admin || user.is_sub_admin)) {
+      // Субадмин — выдаём admin token на основе user JWT
+      const { generateToken } = require('../middleware/auth');
+      const userToken = generateToken(user.id);
+      return res.json({ ok: true, role: 'subadmin', adminToken: userToken, username: user.username });
+    }
+
+    if (user) {
+      // Обычный пользователь — выдаём обычный user token
+      const { generateToken } = require('../middleware/auth');
+      const userToken = generateToken(user.id);
+      return res.json({ ok: true, role: 'user', userToken, username: user.username });
+    }
+
+    return res.status(403).json({ error: 'Аккаунт не найден. Сначала зарегистрируйтесь на сайте.' });
+  } catch (e) {
+    console.error('[admin/tg-login]', e.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
 // ── POST /admin/request-2fa — запросить код в Telegram ───────────────────────
 router.post('/request-2fa', async (req, res) => {
   const adminLogin    = process.env.ADMIN_LOGIN?.trim();
