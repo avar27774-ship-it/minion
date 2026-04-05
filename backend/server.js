@@ -4,6 +4,7 @@ const cors      = require('cors');
 const path      = require('path');
 const rateLimit = require('express-rate-limit');
 const cron      = require('node-cron');
+const http      = require('http');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -281,7 +282,13 @@ initSchema()
     await initAiAdmin().catch(e => console.error('[AI Admin] Init error:', e.message));
   })
   .then(() => {
-    app.listen(PORT, () => {
+    const server = http.createServer(app);
+
+    // ── WebSocket: реалтайм для админки ───────────────────────────────────────
+    const { initWs } = require('./utils/wsEvents');
+    initWs(server);
+
+    server.listen(PORT, () => {
       console.log(`🚀 Minions Market server on port ${PORT}`);
       if (!process.env.JWT_SECRET)          console.warn('⚠️  JWT_SECRET not set');
       if (!process.env.TELEGRAM_BOT_TOKEN)  console.warn('⚠️  TELEGRAM_BOT_TOKEN not set');
