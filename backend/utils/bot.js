@@ -2,6 +2,7 @@
 const https  = require('https');
 const crypto = require('crypto');
 const { queryOne, queryAll, run } = require('../models/db');
+const { logBotIn, logBotOut } = require('./securityLog');
 
 const TOKEN    = () => process.env.TELEGRAM_BOT_TOKEN || '';
 const BASE_URL = () => process.env.BACKEND_URL || '';
@@ -154,8 +155,13 @@ async function handleUpdate(update) {
   const msg = update.message;
   if (!msg || !msg.text) return;
 
-  const chatId = msg.chat.id;
-  const text   = msg.text.trim();
+  const chatId  = msg.chat.id;
+  const text    = msg.text.trim();
+  const tgUser  = msg.from;
+
+  // Логируем входящее сообщение
+  const cmd = text.startsWith('/') ? text.split(' ')[0] : null;
+  logBotIn(chatId, tgUser?.username, text, cmd, { firstName: tgUser?.first_name }).catch(() => {});
 
   // ── /start ────────────────────────────────────────────────────────────────
   if (text.startsWith('/start')) {
