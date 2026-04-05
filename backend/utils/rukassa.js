@@ -38,20 +38,25 @@ function request(path, params) {
 }
 
 async function createInvoice({ amount, orderId, comment = '', hookUrl = '', successUrl = '' }) {
-  if (!isConfigured()) return { ok: false, error: 'RuKassa не настроен (нужны RUKASSA_SHOP_ID и RUKASSA_TOKEN)' };
+  if (!isConfigured()) return { ok: false, error: 'RuKassa не настроен' };
 
-  // Конвертируем USD → RUB (RuKassa работает только в рублях)
+  // Конвертируем USD → RUB
   const amountRub = Math.ceil(parseFloat(amount) * USD_TO_RUB());
 
   // order_id — числовой уникальный
   const numericOrderId = Date.now();
 
+  // user_code — уникальный per-заказ (не фиксированный user ID)
+  // Используем случайный чтобы антифрод не блокировал повторные запросы
+  const userCode = crypto.randomBytes(8).toString('hex');
+
   const params = {
     shop_id:          parseInt(SHOP_ID()),
     token:            TOKEN(),
     order_id:         numericOrderId,
-    amount:           amountRub,          // RUB
+    amount:           amountRub,
     currency:         'RUB',
+    user_code:        userCode,           // случайный per-заказ
     data:             String(orderId),    // наш внутренний orderId для вебхука
     notification_url: hookUrl,
     success_url:      successUrl,
