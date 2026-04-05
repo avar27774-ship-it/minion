@@ -21,7 +21,7 @@ function BottomSheet({ children, onClose, title }) {
         background:'var(--bg2)',
         borderRadius:'24px 24px 0 0',
         padding:'0 0 env(safe-area-inset-bottom)',
-        maxHeight:'92vh',
+        maxHeight:'calc(var(--app-height) * 0.92)',
         overflowY:'auto',
         animation:'slideUp 0.3s ease',
       }}>
