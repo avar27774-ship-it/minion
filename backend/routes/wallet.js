@@ -6,6 +6,7 @@ const rukassa  = require('../utils/rukassa');
 const cryptopay   = require('../utils/cryptopay');
 const notify   = require('../utils/notify');
 const { sanitizeUser } = require('./auth');
+const { broadcast } = require('../utils/wsEvents');
 
 const MIN_DEPOSIT = 1;
 
@@ -316,6 +317,13 @@ async function creditUser(tx) {
       [user.balance, newBal, tx.id]
     );
     notify.notifyDeposit({ ...user, balance: newBal }, tx.amount, tx.gateway_type, tx.gateway_type).catch(() => {});
+    broadcast('deposit_completed', {
+      userId: tx.user_id,
+      username: user.username,
+      amount: parseFloat(tx.amount),
+      gateway: tx.gateway_type,
+      newBalance: newBal,
+    });
   });
 }
 
