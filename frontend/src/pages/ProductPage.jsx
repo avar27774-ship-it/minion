@@ -14,6 +14,7 @@ export default function ProductPage() {
   const [buying, setBuying]       = useState(false)
   const [favorited, setFavorited] = useState(false)
   const [favLoading, setFavLoading] = useState(false)
+  const [similar, setSimilar]     = useState([])
 
   useMeta(product ? {
     title: product.title,
@@ -26,6 +27,8 @@ export default function ProductPage() {
     api.get(`/products/${id}`).then(r => {
       setProduct(r.data)
       if (r.data.isFavorited !== undefined) setFavorited(!!r.data.isFavorited)
+      // Загружаем похожие сразу после основного товара
+      api.get(`/products/${id}/similar`).then(s => setSimilar(s.data.products || [])).catch(() => {})
     }).catch(() => navigate('/catalog')).finally(() => setLoading(false))
   }, [id])
 
@@ -216,6 +219,78 @@ export default function ProductPage() {
       {product.tags?.length > 0 && (
         <div style={{ marginTop:20, display:'flex', gap:8, flexWrap:'wrap' }}>
           {product.tags.map(t => <span key={t} className="badge" style={{ background:'var(--bg3)', color:'var(--t3)' }}>#{t}</span>)}
+        </div>
+      )}
+
+      {similar.length > 0 && (
+        <div style={{ marginTop:40 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+            <h2 style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:20, margin:0 }}>
+              Похожие товары
+            </h2>
+            <Link
+              to={`/catalog?category=${encodeURIComponent(product.category)}`}
+              style={{ fontSize:13, color:'var(--accent)', textDecoration:'none', fontWeight:600 }}
+            >
+              Смотреть все →
+            </Link>
+          </div>
+          <div style={{
+            display:'grid',
+            gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))',
+            gap:16,
+          }}>
+            {similar.map(p => (
+              <Link
+                key={p.id||p._id}
+                to={`/product/${p.id||p._id}`}
+                style={{ textDecoration:'none', color:'inherit' }}
+              >
+                <div style={{
+                  background:'var(--bg2)',
+                  border:'1px solid var(--border)',
+                  borderRadius:16,
+                  overflow:'hidden',
+                  transition:'transform 0.18s, border-color 0.18s',
+                  cursor:'pointer',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.borderColor='rgba(245,200,66,0.35)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform='none'; e.currentTarget.style.borderColor='var(--border)'; }}
+                >
+                  {/* Картинка */}
+                  <div style={{
+                    height:130,
+                    background: p.images?.[0]
+                      ? `url(${p.images[0]}) center/cover no-repeat`
+                      : 'var(--bg3)',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:36, color:'var(--t4)',
+                  }}>
+                    {!p.images?.[0] && <Package size={36} strokeWidth={0.75} style={{opacity:0.25}}/>}
+                  </div>
+
+                  {/* Инфо */}
+                  <div style={{ padding:'12px 14px' }}>
+                    <div style={{ fontSize:11, color:'var(--t3)', marginBottom:4 }}>{p.category}</div>
+                    <div style={{
+                      fontSize:13, fontWeight:600, color:'var(--t1)',
+                      lineHeight:1.4, marginBottom:8,
+                      overflow:'hidden', display:'-webkit-box',
+                      WebkitLineClamp:2, WebkitBoxOrient:'vertical',
+                    }}>
+                      {p.title}
+                    </div>
+                    <div style={{
+                      fontFamily:'var(--font-h)', fontWeight:800,
+                      fontSize:16, color:'var(--accent)',
+                    }}>
+                      ${parseFloat(p.price).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
     </div>
