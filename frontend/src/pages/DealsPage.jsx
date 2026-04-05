@@ -4,6 +4,7 @@ import Particles from '../components/Particles/Particles'
 import { useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
 import toast from 'react-hot-toast'
+import ReviewPopup from '../components/ReviewPopup'
 
 const STATUS_LABELS = { pending:'Ожидание', active:'Активна', completed:'Завершена', disputed:'Спор', cancelled:'Отменена', refunded:'Возврат' }
 const STATUS_COLORS = { pending:'var(--accent)', active:'var(--green)', completed:'var(--t3)', disputed:'var(--red)', cancelled:'var(--t4)', refunded:'#22d3ee' }
@@ -40,6 +41,7 @@ export default function DealsPage() {
   const [delivery, setDelivery] = useState('')
   const [working, setWorking]   = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [reviewDeal, setReviewDeal] = useState(null)
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
@@ -103,7 +105,9 @@ export default function DealsPage() {
     try {
       await api.post(`/deals/${selected._id||selected.id}/confirm`)
       toast.success('Сделка завершена! Деньги переведены продавцу.')
-      reloadAll(selected._id||selected.id)
+      await reloadAll(selected._id||selected.id)
+      // Показываем попап с оценкой
+      setReviewDeal(selected)
     } catch(e) { toast.error(e.response?.data?.error||'Ошибка') }
     setWorking(false)
   }
@@ -299,6 +303,27 @@ export default function DealsPage() {
               </div>
             )}
 
+            {/* Кнопка отзыва для завершённых сделок */}
+            {selected.status==='completed' && isBuyer(selected) && !selected.hasReview && (
+              <button
+                onClick={() => setReviewDeal(selected)}
+                style={{
+                  width:'100%', padding:'12px', borderRadius:10, cursor:'pointer',
+                  background:'rgba(245,200,66,0.08)', border:'1px solid rgba(245,200,66,0.35)',
+                  color:'var(--accent)', fontSize:13, fontWeight:700,
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                  fontFamily:'var(--font-h)',
+                }}
+              >
+                ⭐ Оставить отзыв о продавце
+              </button>
+            )}
+            {selected.status==='completed' && isBuyer(selected) && selected.hasReview && (
+              <div style={{ padding:'10px 14px', background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.2)', borderRadius:10, fontSize:13, color:'var(--accent)', textAlign:'center' }}>
+                ✅ Вы уже оставили отзыв
+              </div>
+            )}
+
             {/* Инпут сообщения */}
             {['active','disputed'].includes(selected.status) && (
               <div style={{ display:'flex', gap:8 }}>
@@ -320,6 +345,23 @@ export default function DealsPage() {
 
   return (
     <div style={{ position:'relative', minHeight:'var(--app-height)', overflow:'hidden' }}>
+      {/* ReviewPopup */}
+      {reviewDeal && (
+        <ReviewPopup
+          deal={reviewDeal}
+          onClose={() => setReviewDeal(null)}
+          onSubmitted={() => {
+            setDeals(prev => prev.map(d =>
+              (d.id||d._id) === (reviewDeal.id||reviewDeal._id)
+                ? { ...d, hasReview: true }
+                : d
+            ))
+            if (selected && (selected.id||selected._id) === (reviewDeal.id||reviewDeal._id)) {
+              setSelected(s => ({ ...s, hasReview: true }))
+            }
+          }}
+        />
+      )}
       {/* Particles фон */}
       <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
         <Particles
