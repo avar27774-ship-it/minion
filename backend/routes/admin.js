@@ -251,7 +251,7 @@ router.use(adminPanelAuth);
 router.get('/stats', async (req, res) => {
   try {
     const [users, products, deals, revenue, recentDeals, monthly] = await Promise.all([
-      queryOne(`SELECT COUNT(*) as c FROM users WHERE password IS NOT NULL`),
+      queryOne(`SELECT COUNT(*) as c FROM users WHERE username IS NOT NULL`),
       queryOne(`SELECT COUNT(*) as c FROM products WHERE status = 'active'`),
       queryOne(`SELECT COUNT(*) as c FROM deals`),
       queryOne(`SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type = 'commission' AND status = 'completed'`),
@@ -271,8 +271,8 @@ router.get('/users', async (req, res) => {
   try {
     const { search } = req.query;
     const users = search
-      ? await queryAll(`SELECT * FROM users WHERE (username ILIKE $1 OR telegram_id = $2) AND password IS NOT NULL ORDER BY created_at DESC LIMIT 50`, [`%${search}%`, search])
-      : await queryAll(`SELECT * FROM users WHERE password IS NOT NULL ORDER BY created_at DESC LIMIT 100`);
+      ? await queryAll(`SELECT * FROM users WHERE (username ILIKE $1 OR telegram_id = $2) ORDER BY created_at DESC LIMIT 50`, [`%${search}%`, search])
+      : await queryAll(`SELECT * FROM users WHERE username IS NOT NULL ORDER BY created_at DESC LIMIT 100`);
     res.json(users.map(u => ({ ...sanitizeUser(u), isBanned: !!u.is_banned, isVerified: !!u.is_verified, isSubAdmin: !!u.is_sub_admin })));
   } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
 });
@@ -448,7 +448,7 @@ router.get('/stats/detailed', async (req, res) => {
       queryOne(`SELECT COALESCE(SUM(amount),0) as t FROM transactions WHERE type='commission' AND status='completed' AND created_at >= $1`, [d30]),
       queryAll(`SELECT u.username, u.id, COUNT(d.id) as sales, COALESCE(SUM(d.seller_amount),0) as earned FROM deals d LEFT JOIN users u ON u.id=d.seller_id WHERE d.status='completed' AND d.updated_at >= $1 GROUP BY u.id,u.username ORDER BY sales DESC LIMIT 5`, [d7]),
       queryAll(`SELECT p.title, p.id, p.views, p.price, COUNT(d.id) as sales FROM products p LEFT JOIN deals d ON d.product_id=p.id AND d.status='completed' GROUP BY p.id,p.title,p.views,p.price ORDER BY sales DESC, p.views DESC LIMIT 5`),
-      queryAll(`SELECT id, username, created_at, total_sales, total_purchases FROM users WHERE password IS NOT NULL ORDER BY created_at DESC LIMIT 10`),
+      queryAll(`SELECT id, username, first_name, telegram_id, created_at, total_sales, total_purchases FROM users WHERE username IS NOT NULL ORDER BY created_at DESC LIMIT 10`),
       queryOne(`SELECT COUNT(*) as c, COALESCE(SUM(amount),0) as vol FROM transactions WHERE type='withdrawal' AND status='pending'`),
       queryOne(`SELECT COUNT(*) as c FROM deals WHERE status='disputed'`),
       queryAll(`SELECT TO_CHAR(TO_TIMESTAMP(created_at),'YYYY-MM-DD') as day, COUNT(*) as deals, COALESCE(SUM(amount),0) as vol FROM deals WHERE created_at >= $1 GROUP BY day ORDER BY day ASC`, [d30]),
@@ -478,7 +478,7 @@ router.post('/broadcast', async (req, res) => {
     if (filter === 'buyers')   users = await queryAll(`SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL AND total_purchases > 0`);
     else if (filter === 'sellers') users = await queryAll(`SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL AND total_sales > 0`);
     else if (filter === 'verified') users = await queryAll(`SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL AND is_verified = 1`);
-    else users = await queryAll(`SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL AND password IS NOT NULL`);
+    else users = await queryAll(`SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL`);
 
     const { sendTg } = require('../utils/notify');
     let sent = 0;
@@ -533,7 +533,7 @@ router.post('/users/:id/set-level', async (req, res) => {
 // ── POST /admin/users/recalc-levels — пересчитать все уровни автоматически ────
 router.post('/users/recalc-levels', async (req, res) => {
   try {
-    const users = await queryAll('SELECT id, total_sales, level_override FROM users WHERE password IS NOT NULL');
+    const users = await queryAll('SELECT id, total_sales, level_override FROM users WHERE username IS NOT NULL');
     let updated = 0;
     for (const u of users) {
       if (u.level_override) continue; // не трогаем ручные
