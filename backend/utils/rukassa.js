@@ -6,11 +6,13 @@ const SHOP_ID = () => process.env.RUKASSA_SHOP_ID || '';
 const TOKEN   = () => process.env.RUKASSA_TOKEN   || '';
 const SECRET  = () => process.env.RUKASSA_SECRET  || '';
 
+// Курс USD → RUB (можно задать через переменную окружения)
+const USD_TO_RUB = () => parseFloat(process.env.USD_TO_RUB || '90');
+
 function isConfigured() { return !!(SHOP_ID() && TOKEN()); }
 
 function request(path, params) {
   return new Promise((resolve, reject) => {
-    // RuKassa принимает form-urlencoded
     const data = qs.stringify(params);
     const req = https.request({
       hostname: 'lk.rukassa.io',
@@ -38,32 +40,30 @@ function request(path, params) {
 async function createInvoice({ amount, orderId, comment = '', hookUrl = '', successUrl = '' }) {
   if (!isConfigured()) return { ok: false, error: 'RuKassa не настроен (нужны RUKASSA_SHOP_ID и RUKASSA_TOKEN)' };
 
-  // order_id должен быть числом (Int) по документации
+  // Конвертируем USD → RUB (RuKassa работает только в рублях)
+  const amountRub = Math.ceil(parseFloat(amount) * USD_TO_RUB());
+
+  // order_id — числовой уникальный
   const numericOrderId = Date.now();
 
-  // user_code — ID юзера из orderId (формат: rukassa_USERID_TIMESTAMP)
-  const parts    = String(orderId).split('_');
-  const userCode = parts.length >= 2 ? parts[1] : String(numericOrderId);
-
   const params = {
-    shop_id:          parseInt(SHOP_ID()),  // Int
-    token:            TOKEN(),              // API токен
-    order_id:         numericOrderId,       // Int
-    amount:           parseFloat(amount),   // Float
-    currency:         'RUB',               // валюта (RUB для РФ методов)
-    data:             String(orderId),      // наш внутренний orderId
+    shop_id:          parseInt(SHOP_ID()),
+    token:            TOKEN(),
+    order_id:         numericOrderId,
+    amount:           amountRub,          // RUB
+    currency:         'RUB',
+    data:             String(orderId),    // наш внутренний orderId для вебхука
     notification_url: hookUrl,
     success_url:      successUrl,
     fail_url:         successUrl,
   };
 
-  console.log('[RuKassa] createInvoice request:', JSON.stringify({ ...params, token: '***' }));
+  console.log('[RuKassa] createInvoice:', JSON.stringify({ ...params, token: '***' }));
 
   try {
     const res = await request('/api/v1/create', params);
     console.log('[RuKassa] response:', JSON.stringify(res));
 
-    // Документация говорит что возвращает url (не link)
     if (res && res.url)  return { ok: true, payUrl: res.url,  invoiceId: String(res.id || numericOrderId) };
     if (res && res.link) return { ok: true, payUrl: res.link, invoiceId: String(res.id || numericOrderId) };
     return { ok: false, error: res?.message || res?.error || JSON.stringify(res) };
@@ -73,7 +73,6 @@ async function createInvoice({ amount, orderId, comment = '', hookUrl = '', succ
 }
 
 function verifyWebhook(body) {
-  // Если SECRET не задан — пропускаем проверку подписи
   if (!SECRET()) return true;
   try {
     const { shop_id, amount, order_id, sign: s } = body;
