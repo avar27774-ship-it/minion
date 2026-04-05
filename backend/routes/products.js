@@ -2,6 +2,7 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const { queryOne, queryAll, run } = require('../models/db');
 const { auth } = require('../middleware/auth');
+const { broadcast } = require('../utils/wsEvents');
 
 function parseProduct(p) {
   if (!p) return null;
@@ -137,6 +138,13 @@ router.post('/', auth, async (req, res) => {
 
     const product = await queryOne(`${PRODUCT_SELECT} WHERE p.id = $1`, [id]);
     delete product.delivery_data;
+    broadcast('product_created', {
+      productId: id,
+      title: title.trim(),
+      price: parseFloat(price),
+      category,
+      seller: product.seller_username || req.userId,
+    });
     res.status(201).json(parseProduct(product));
   } catch (e) {
     console.error('POST /products error:', e);
