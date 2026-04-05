@@ -64,7 +64,7 @@ export default function Layout({ children }) {
   const avatar = (user?.username || user?.firstName || '?')[0].toUpperCase()
 
   return (
-    <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column' }}>
+    <div style={{ minHeight:'var(--app-height)', display:'flex', flexDirection:'column' }}>
 
       {/* ── Header ───────────────────────────────────────────────────────────── */}
       <header style={{
