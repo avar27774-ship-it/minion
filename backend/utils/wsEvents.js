@@ -3,10 +3,11 @@
  *
  * Реалтайм поток событий для админ-панели:
  *   - Новые пользователи
- *   - Новые сделки
- *   - Споры
+ *   - Новые сделки / споры / завершения
  *   - Пополнения кошелька
  *   - Новые товары
+ *
+ * Каждое событие дублируется в MongoDB (event_logs) для истории.
  *
  * Подключение: require('./utils/wsEvents').initWs(server)
  * Отправка:    require('./utils/wsEvents').broadcast('deal_created', { ... })
@@ -18,22 +19,20 @@ const { WebSocketServer } = require('ws');
 
 let wss = null;
 
-// Подключённые админ-клиенты: Set<ws>
+// Подключённые админ-клиенты
 const adminClients = new Set();
 
 /**
  * Инициализировать WS-сервер на существующем HTTP-сервере
- * @param {import('http').Server} httpServer
  */
 function initWs(httpServer) {
   wss = new WebSocketServer({ server: httpServer, path: '/ws/admin' });
 
   wss.on('connection', (ws, req) => {
-    // Простая проверка токена — передаётся как ?token=XXX
-    const url = new URL(req.url, 'http://localhost');
+    const url   = new URL(req.url, 'http://localhost');
     const token = url.searchParams.get('token');
-
     const adminToken = process.env.ADMIN_WS_TOKEN || process.env.JWT_SECRET || '';
+
     if (!token || token !== adminToken) {
       ws.close(4001, 'Unauthorized');
       return;
@@ -42,7 +41,6 @@ function initWs(httpServer) {
     adminClients.add(ws);
     console.log(`[WS] Админ подключился. Всего: ${adminClients.size}`);
 
-    // Пинг каждые 30 секунд чтобы не дропало соединение
     const ping = setInterval(() => {
       if (ws.readyState === ws.OPEN) ws.ping();
     }, 30000);
@@ -58,7 +56,6 @@ function initWs(httpServer) {
       clearInterval(ping);
     });
 
-    // Отправляем приветственное сообщение
     safeSend(ws, { type: 'connected', ts: Date.now(), clients: adminClients.size });
   });
 
@@ -67,22 +64,21 @@ function initWs(httpServer) {
 
 function safeSend(ws, data) {
   try {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify(data));
-    }
-  } catch (e) {
-    // ignore
-  }
+    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(data));
+  } catch (e) { /* ignore */ }
 }
 
 /**
  * Разослать событие всем подключённым админам
- * @param {string} type   Тип события: 'user_registered' | 'deal_created' | 'deal_disputed' | 'deposit_completed' | 'product_created' | 'deal_completed'
- * @param {object} payload Данные события
+ * + дублировать в MongoDB event_logs
+ *
+ * type: 'user_registered' | 'deal_created' | 'deal_disputed' |
+ *       'deposit_completed' | 'product_created' | 'deal_completed'
  */
 function broadcast(type, payload = {}) {
-  if (!adminClients.size) return;
   const msg = JSON.stringify({ type, payload, ts: Date.now() });
+
+  // 1. Рассылаем по WS всем подключённым админам
   for (const ws of adminClients) {
     try {
       if (ws.readyState === ws.OPEN) ws.send(msg);
@@ -90,6 +86,12 @@ function broadcast(type, payload = {}) {
       adminClients.delete(ws);
     }
   }
+
+  // 2. Пишем в MongoDB (не ждём, не падаем если Mongo недоступна)
+  try {
+    const { logEvent } = require('../models/mongo');
+    logEvent(type, payload).catch(() => {});
+  } catch (e) { /* MongoDB не подключена — ok */ }
 }
 
 module.exports = { initWs, broadcast };
