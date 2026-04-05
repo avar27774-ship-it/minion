@@ -303,10 +303,14 @@ router.post('/webhook/nowpayments', async (req, res) => {
 
 // ── Internal: creditUser ───────────────────────────────────────────────────────
 async function creditUser(tx) {
+  // Сохраняем данные для уведомлений — они должны быть ПОСЛЕ транзакции
+  let userSnapshot = null;
+  let newBal = 0;
+
   await transaction(async (client) => {
     const userRes = await client.query('SELECT * FROM users WHERE id = $1', [tx.user_id]);
     const user    = userRes.rows[0];
-    const newBal  = parseFloat(user.balance) + parseFloat(tx.amount);
+    newBal        = parseFloat(user.balance) + parseFloat(tx.amount);
 
     await client.query(
       `UPDATE users SET balance = $1, total_deposited = total_deposited + $2 WHERE id = $3`,
@@ -316,15 +320,22 @@ async function creditUser(tx) {
       `UPDATE transactions SET status = 'completed', balance_before = $1, balance_after = $2 WHERE id = $3`,
       [user.balance, newBal, tx.id]
     );
-    notify.notifyDeposit({ ...user, balance: newBal }, tx.amount, tx.gateway_type, tx.gateway_type).catch(() => {});
+
+    // Сохраняем снапшот — НЕ вызываем notify/broadcast внутри транзакции
+    userSnapshot = { ...user, balance: newBal };
+  });
+
+  // Уведомления и WS — строго ПОСЛЕ закрытия транзакции
+  if (userSnapshot) {
+    notify.notifyDeposit(userSnapshot, tx.amount, tx.gateway_type, tx.gateway_type).catch(() => {});
     broadcast('deposit_completed', {
-      userId: tx.user_id,
-      username: user.username,
-      amount: parseFloat(tx.amount),
-      gateway: tx.gateway_type,
+      userId:     tx.user_id,
+      username:   userSnapshot.username,
+      amount:     parseFloat(tx.amount),
+      gateway:    tx.gateway_type,
       newBalance: newBal,
     });
-  });
+  }
 }
 
 module.exports = router;
