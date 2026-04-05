@@ -93,6 +93,8 @@ export default function WalletPage() {
         ? '/wallet/deposit/cryptopay'
         : payMethod === 'nowpayments'
         ? '/wallet/deposit/nowpayments'
+        : payMethod === 'crystalpay'
+        ? '/wallet/deposit/crystalpay'
         : '/wallet/deposit/rukassa'
       const { data } = await api.post(endpoint, { amount: amt })
       if (data.payUrl) {
@@ -219,6 +221,7 @@ export default function WalletPage() {
             {[
               { v:'rukassa',     icon:'🏦', label:'RuKassa',     desc:'Карта РФ, СБП · от $100' },
               { v:'cryptopay',   icon:'✈️', label:'CryptoPay',   desc:'Временно недоступно', disabled:true },
+              { v:'crystalpay',  icon:'💎', label:'CrystalPAY',  desc:'Карты РФ + крипта · от $1' },
               { v:'nowpayments', icon:'🌍', label:'NOWPayments',  desc:'350+ крипт · от $1' },
             ].map(m => (
               <button key={m.v} onClick={() => !m.disabled && setPayMethod(m.v)} style={{
@@ -270,6 +273,22 @@ export default function WalletPage() {
               ))}
             </div>
           )}
+          {payMethod === 'crystalpay' && (
+            <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:10 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
+              {[
+                ['💳', 'Карты РФ (Visa/MC/МИР)', '$1.00'],
+                ['⚡', 'СБП (Система быстрых платежей)', '$1.00'],
+                ['💎', 'USDT / BTC / ETH / TON', '$1.00'],
+                ['🪙', 'Другие криптовалюты', '$1.00'],
+              ].map(([icon, label, min]) => (
+                <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)' }}>{min}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {payMethod === 'cryptopay' && (
             <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
               <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:10 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
@@ -308,7 +327,7 @@ export default function WalletPage() {
           {/* Расчёт комиссии */}
           {parseFloat(amount) >= 2 && (() => {
             const amt     = parseFloat(amount) || 0
-            const fee     = payMethod === 'rukassa' ? amt * 0.04 : amt * 0.01
+            const fee     = payMethod === 'rukassa' ? amt * 0.04 : payMethod === 'crystalpay' ? amt * 0.03 : amt * 0.01
             const receive = Math.max(0, amt - fee)
             return (
               <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.15)', borderRadius:14, padding:'14px 16px', marginBottom:16 }}>
@@ -317,7 +336,7 @@ export default function WalletPage() {
                   <span style={{ fontSize:14, fontWeight:700 }}>${amt.toFixed(2)}</span>
                 </div>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-                  <span style={{ fontSize:14, color:'var(--t3)' }}>Комиссия {payMethod === 'rukassa' ? 'RuKassa (~4%)' : 'CryptoPay (~1%)'}</span>
+                  <span style={{ fontSize:14, color:'var(--t3)' }}>Комиссия {payMethod === 'rukassa' ? 'RuKassa (~4%)' : payMethod === 'crystalpay' ? 'CrystalPAY (~3%)' : 'CryptoPay (~1%)'}</span>
                   <span style={{ fontSize:14, color:'var(--red)' }}>−${fee.toFixed(2)}</span>
                 </div>
                 <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
