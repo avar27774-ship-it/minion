@@ -6,6 +6,7 @@ const { generateToken, auth } = require('../middleware/auth');
 const { getBot } = require('../utils/bot');
 const notify  = require('../utils/notify');
 const { log, getIp, EVENTS } = require('../utils/securityLog');
+const { broadcast } = require('../utils/wsEvents');
 
 function sanitizeUser(u) {
   if (!u) return null;
@@ -114,6 +115,11 @@ router.post('/register/verify', async (req, res) => {
 
     await log(EVENTS.REGISTER, req, { userId: user.id, username: uname });
     if (user.telegram_id) notify.notifyRegistered(user).catch(() => {});
+    broadcast('user_registered', {
+      userId: user.id,
+      username: user.username,
+      via: user.telegram_id ? 'telegram' : 'password',
+    });
 
     res.json({ token, user: sanitizeUser(user) });
   } catch (e) {
@@ -319,6 +325,12 @@ router.post('/tg-webapp', async (req, res) => {
       );
       user = await queryOne('SELECT * FROM users WHERE id = $1', [userId]);
       notify.notifyRegistered(user).catch(() => {});
+      broadcast('user_registered', {
+        userId: user.id,
+        username: user.username,
+        firstName: user.first_name,
+        via: 'telegram_webapp',
+      });
     } else {
       // Обновляем last_active и данные профиля
       await run(
