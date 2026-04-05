@@ -80,4 +80,49 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// ── GET /users/me/notifications ───────────────────────────────────────────────
+router.get('/me/notifications', auth, async (req, res) => {
+  try {
+    const items = await queryAll(
+      `SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+      [req.userId]
+    );
+    const unread = items.filter(n => !n.is_read).length;
+    res.json({
+      notifications: items.map(n => ({ ...n, _id: n.id, createdAt: new Date(n.created_at * 1000) })),
+      unread,
+    });
+  } catch(e) {
+    res.status(500).json({ error: 'Ошибка' });
+  }
+});
+
+// ── POST /users/me/notifications/read ────────────────────────────────────────
+router.post('/me/notifications/read', auth, async (req, res) => {
+  try {
+    const { ids } = req.body; // если ids пустой — помечаем все
+    if (ids && ids.length) {
+      await run(
+        `UPDATE notifications SET is_read = 1 WHERE user_id = $1 AND id = ANY($2::text[])`,
+        [req.userId, ids]
+      );
+    } else {
+      await run(`UPDATE notifications SET is_read = 1 WHERE user_id = $1`, [req.userId]);
+    }
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: 'Ошибка' });
+  }
+});
+
+// ── DELETE /users/me/notifications ───────────────────────────────────────────
+router.delete('/me/notifications', auth, async (req, res) => {
+  try {
+    await run(`DELETE FROM notifications WHERE user_id = $1`, [req.userId]);
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: 'Ошибка' });
+  }
+});
+
 module.exports = router;
