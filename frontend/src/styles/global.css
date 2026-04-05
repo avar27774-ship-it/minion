@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
+  --app-height: 100dvh;   /* переопределяется JS для TG Mini App */
   --bg:       #0d0d14;
   --bg2:      #12121c;
   --bg3:      #1a1a28;
@@ -33,7 +34,7 @@ body {
   font-family: var(--font-b);
   font-size: 15px;
   line-height: 1.6;
-  min-height: 100vh;
+  min-height: var(--app-height);
   overflow-x: hidden;
 }
 input,textarea,select,button { font-family: inherit; }
