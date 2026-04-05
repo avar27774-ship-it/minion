@@ -172,6 +172,10 @@ app.use('/api/messages',   require('./routes/messages'));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
+// ── API Request Logger (всё логируем) ────────────────────────────────────────
+const { apiLogMiddleware } = require('./utils/securityLog');
+app.use(apiLogMiddleware);
+
 // ── Telegram bot (webhook mode) ───────────────────────────────────────────────
 const { getBot, handleUpdate, handleCallback } = require('./utils/bot');
 
