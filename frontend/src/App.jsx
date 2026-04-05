@@ -2,6 +2,7 @@ import React, { Suspense, lazy, Component, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster, toast } from 'react-hot-toast'
 import Layout from './components/Layout'
+import OfflineBanner from './components/OfflineBanner'
 import { useStore, api } from './store'
 
 const Home     = lazy(() => import('./pages/HomePage'))
@@ -16,7 +17,6 @@ const Admin    = lazy(() => import('./pages/AdminPage'))
 const Profile  = lazy(() => import('./pages/ProfilePage'))
 const NotFound = lazy(() => import('./pages/NotFoundPage'))
 const Messages = lazy(() => import('./pages/MessagesPage'))
-import OfflineBanner from './components/OfflineBanner'
 
 class ErrorBoundary extends Component {
   state = { error: null }
