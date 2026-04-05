@@ -248,6 +248,11 @@ require('./utils/monitor');
 
 // ── Init DB then start ────────────────────────────────────────────────────────
 const { initSchema } = require('./models/db');
+const { connectMongo } = require('./models/mongo');
+
+// MongoDB подключается параллельно — не блокирует старт
+connectMongo().catch(() => {});
+
 const PORT = process.env.PORT || 5000;
 
 initSchema()
