@@ -1,7 +1,7 @@
 import RotatingText from '../components/RotatingText/RotatingText'
 import useMeta from '../hooks/useMeta'
 import { ShieldCheck, Zap, Handshake, Layers, Gamepad2, Coins, Sword, Palette, KeyRound, Star, Rocket, Package, Box, LayoutGrid } from '../components/Icon'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { api, useStore } from '../store'
 import ProductCard from '../components/ProductCard'
