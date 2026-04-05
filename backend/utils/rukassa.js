@@ -50,9 +50,8 @@ async function createInvoice({ amount, orderId, comment = '', hookUrl = '', succ
     token:            TOKEN(),              // API токен
     order_id:         numericOrderId,       // Int
     amount:           parseFloat(amount),   // Float
-    currency:         'USD',               // валюта
-    user_code:        userCode,             // Идентификатор клиента (обязателен при анти-фрод)
-    data:             JSON.stringify({ original_order_id: String(orderId), comment: comment || '' }),
+    currency:         'RUB',               // валюта (RUB для РФ методов)
+    data:             String(orderId),      // наш внутренний orderId
     notification_url: hookUrl,
     success_url:      successUrl,
     fail_url:         successUrl,
