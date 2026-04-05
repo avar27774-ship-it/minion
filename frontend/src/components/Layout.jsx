@@ -28,7 +28,6 @@ export default function Layout({ children }) {
   const [scrolled,   setScrolled]   = useState(false)
   const [notifOpen,  setNotifOpen]  = useState(false)
   const [notifs,     setNotifs]     = useState([])
-  const [isMobile,   setIsMobile]   = useState(window.innerWidth <= 768)
   const [unread,     setUnread]     = useState(0)
 
   const loadNotifs = useCallback(async () => {
@@ -72,15 +71,12 @@ export default function Layout({ children }) {
     }
     const onScroll = () => setScrolled(window.scrollY > 20)
     window.addEventListener('scroll', onScroll)
-    const onResize = () => setIsMobile(window.innerWidth <= 768)
-    window.addEventListener('resize', onResize)
 
     // Обновляем баланс каждые 30 секунд
     const interval = setInterval(() => { refreshUser() }, 30000)
 
     return () => {
       window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onResize)
       clearInterval(interval)
     }
   }, [])
@@ -148,7 +144,7 @@ export default function Layout({ children }) {
           </nav>
 
           {/* Desktop right actions */}
-          <div style={{ display: isMobile ? 'none' : 'flex', alignItems:'center', gap:8, flexShrink:0 }} className="desktop-actions">
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }} className="desktop-actions">
             {user ? (
               <>
                 <Link to="/sell" className="btn btn-sm btn-secondary">+ Продать</Link>
@@ -363,7 +359,7 @@ export default function Layout({ children }) {
           </div>
 
           {/* Mobile: balance + burger */}
-          <div style={{ display: isMobile ? 'flex' : 'none', alignItems:'center', gap:10, marginLeft:'auto' }} className="mobile-header-right">
+          <div style={{ display:'none', alignItems:'center', gap:10, marginLeft:'auto' }} className="mobile-header-right">
             {user && (
               <div style={{
                 display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
@@ -565,7 +561,32 @@ export default function Layout({ children }) {
           { to:'/sell',    icon:<IconPlus/>,      label:'Продать', center:true },
           { to:'/messages', icon:<IconMessages/>, label:'Чаты' },
           { to: user ? '/profile' : '/auth', icon:<IconProfile/>, label: user ? 'Профиль' : 'Войти' },
+          { menu:true, label:'Меню' },
         ].map(item => (
+          item.menu ? (
+            <button key="menu" onClick={() => setMobileMenu(true)} style={{
+              flex:1, display:'flex', flexDirection:'column', alignItems:'center',
+              justifyContent:'center', gap:3, padding:'8px 0',
+              background:'transparent', border:'none', cursor:'pointer',
+              color: mobileMenu ? 'var(--accent)' : 'var(--t3)',
+            }}>
+              <div style={{
+                width:28, height:28, display:'flex', flexDirection:'column',
+                alignItems:'center', justifyContent:'center', gap:5,
+                borderRadius:8,
+                background: mobileMenu ? 'rgba(245,200,66,0.12)' : 'transparent',
+              }}>
+                <span style={{ width:14, height:2, background: mobileMenu ? 'var(--accent)' : 'var(--t3)', borderRadius:2, display:'block' }}/>
+                <span style={{ width:14, height:2, background: mobileMenu ? 'var(--accent)' : 'var(--t3)', borderRadius:2, display:'block' }}/>
+                <span style={{ width:10, height:2, background: mobileMenu ? 'var(--accent)' : 'var(--t3)', borderRadius:2, display:'block', alignSelf:'flex-start', marginLeft:2 }}/>
+              </div>
+              <span style={{
+                fontSize:10, fontWeight:700, fontFamily:'var(--font-h)',
+                marginTop:1,
+                color: mobileMenu ? 'var(--accent)' : 'var(--t3)',
+              }}>Меню</span>
+            </button>
+          ) : (
           <Link key={item.to} to={item.to} style={{
             flex:1, display:'flex', flexDirection:'column', alignItems:'center',
             justifyContent:'center', gap:3, padding:'8px 0', textDecoration:'none',
@@ -601,6 +622,7 @@ export default function Layout({ children }) {
               </>
             )}
           </Link>
+          )
         ))}
       </nav>
 
