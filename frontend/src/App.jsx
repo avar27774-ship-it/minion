@@ -45,28 +45,17 @@ function Loader() {
   )
 }
 
-// ── TG Viewport: синхронизируем --app-height с реальным viewport ──────────────
 function useTelegramViewport() {
   useEffect(() => {
     const tg = window.Telegram?.WebApp
-
-    const setHeight = (h) => {
-      document.documentElement.style.setProperty('--app-height', `${h}px`)
-    }
-
+    const setHeight = (h) => document.documentElement.style.setProperty('--app-height', `${h}px`)
     if (tg) {
-      const apply = () => {
-        const h = tg.viewportStableHeight || tg.viewportHeight || window.innerHeight
-        setHeight(h)
-      }
+      const apply = () => setHeight(tg.viewportStableHeight || tg.viewportHeight || window.innerHeight)
       apply()
       tg.onEvent('viewportChanged', apply)
       return () => tg.offEvent('viewportChanged', apply)
     } else {
-      const apply = () => {
-        const h = window.visualViewport?.height || window.innerHeight
-        setHeight(h)
-      }
+      const apply = () => setHeight(window.visualViewport?.height || window.innerHeight)
       apply()
       window.visualViewport?.addEventListener('resize', apply)
       window.addEventListener('resize', apply)
@@ -80,39 +69,43 @@ function useTelegramViewport() {
 
 // ── Telegram Mini App авто-логин ──────────────────────────────────────────────
 function TelegramWebAppAuth({ children }) {
-  const { user, setUser } = useStore()
+  const { user, setUser, hydrated } = useStore()
   const [tgReady, setTgReady] = useState(false)
 
   useEffect(() => {
+    // Ждём пока zustand persist загрузит user из localStorage
+    if (!hydrated) return
+
     const tg = window.Telegram?.WebApp
-    if (!tg || !tg.initData) { setTgReady(true); return }
+    if (!tg || !tg.initData) {
+      setTgReady(true)
+      return
+    }
 
     tg.ready()
     tg.expand()
     tg.setHeaderColor('#0d0d14')
     tg.setBackgroundColor('#0d0d14')
 
-    // Извлекаем TG id текущего аккаунта из initData
+    // Достаём TG id из initData
     let tgUserId = null
     try {
       const params = new URLSearchParams(tg.initData)
-      const tgUserData = JSON.parse(params.get('user') || '{}')
-      tgUserId = String(tgUserData.id || '')
+      tgUserId = String(JSON.parse(params.get('user') || '{}').id || '')
     } catch (e) {}
 
-    // Если в сторе уже есть юзер — сравниваем telegram_id
-    // Совпадает → тот же аккаунт, запрос не нужен
-    // Не совпадает → другой TG аккаунт, сбрасываем старый токен
+    // Если уже залогинен тем же TG аккаунтом — не делаем запрос
     if (user && tgUserId) {
       const storedTgId = String(user.telegramId || user.telegram_id || '')
       if (storedTgId && storedTgId === tgUserId) {
         setTgReady(true)
         return
       }
-      // Другой аккаунт — вычищаем старую сессию
+      // Другой аккаунт — сбрасываем
       localStorage.removeItem('mn_token')
     }
 
+    // Авторизуемся через initData
     api.post('/auth/tg-webapp', { initData: tg.initData })
       .then(({ data }) => {
         localStorage.setItem('mn_token', data.token)
@@ -121,9 +114,11 @@ function TelegramWebAppAuth({ children }) {
       })
       .catch(err => console.warn('[TgWebApp] auth failed:', err.response?.data?.error))
       .finally(() => setTgReady(true))
-  }, [])
 
-  if (!tgReady) return <Loader />
+  }, [hydrated]) // ← ждём hydrated
+
+  // Пока store не загрузился или TG не авторизовался — показываем лоадер
+  if (!hydrated || !tgReady) return <Loader />
   return children
 }
 
