@@ -79,30 +79,20 @@ router.post('/deposit/cryptopay', auth, async (req, res) => {
 // ── POST /wallet/webhook/rukassa ──────────────────────────────────────────────
 router.post('/webhook/rukassa', async (req, res) => {
   try {
-    console.log('[RuKassa] webhook body:', JSON.stringify(req.body));
-
     if (!rukassa.verifyWebhook(req.body)) {
-      console.warn('[RuKassa] Invalid webhook signature');
+      console.warn('Invalid RuKassa webhook signature');
       return res.status(400).send('Invalid signature');
     }
-
-    const { status } = req.body;
+    const { order_id, status } = req.body;
     if (status !== 'success') return res.send('ok');
 
-    // RuKassa передаёт наш orderId в поле data
-    const orderId = req.body.data || req.body.order_id;
-    if (!orderId) { console.warn('[RuKassa] no orderId in webhook'); return res.send('ok'); }
-
-    const tx = await queryOne(
-      'SELECT * FROM transactions WHERE gateway_order_id = $1',
-      [String(orderId)]
-    );
+    const tx = await queryOne('SELECT * FROM transactions WHERE gateway_order_id = $1', [order_id]);
     if (!tx || tx.status === 'completed') return res.send('ok');
 
     await creditUser(tx);
     res.send('ok');
   } catch (e) {
-    console.error('[RuKassa] webhook error:', e);
+    console.error('Rukassa webhook error:', e);
     res.status(500).send('error');
   }
 });
@@ -249,6 +239,109 @@ router.post('/withdraw', auth, async (req, res) => {
   } catch (e) {
     console.error('Withdraw error:', e);
     res.status(500).json({ error: 'Ошибка' });
+  }
+});
+
+// ── POST /wallet/withdraw/rukassa — вывод через СБП/карту ───────────────────
+router.post('/withdraw/rukassa', auth, async (req, res) => {
+  try {
+    const { amount, account, method = 'sbp' } = req.body;
+    const amt = parseFloat(amount);
+
+    if (!amt || amt < 5)       return res.status(400).json({ error: 'Минимальный вывод $5' });
+    if (!account?.trim())      return res.status(400).json({ error: 'Укажите номер телефона (СБП) или карты' });
+    if (!rukassa.isConfigured()) return res.status(400).json({ error: 'RuKassa не настроен' });
+
+    const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.userId]);
+    if (parseFloat(user.balance) < amt) return res.status(400).json({ error: 'Недостаточно средств' });
+
+    // Лимит 24 часа
+    const since24h = Math.floor(Date.now() / 1000) - 86400;
+    const withdrawn24h = await queryOne(
+      `SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE user_id=$1 AND type='withdrawal' AND created_at>=$2`,
+      [req.userId, since24h]
+    );
+    const alreadyWithdrawn = parseFloat(withdrawn24h?.total) || 0;
+    const DAILY_LIMIT = parseFloat(process.env.DAILY_WITHDRAW_LIMIT || '500');
+    if (alreadyWithdrawn + amt > DAILY_LIMIT) {
+      return res.status(400).json({ error: `Превышен дневной лимит $${DAILY_LIMIT}. Доступно: $${Math.max(0, DAILY_LIMIT - alreadyWithdrawn).toFixed(2)}` });
+    }
+
+    // Комиссия 5%
+    const fee        = Math.round(amt * 0.05 * 100) / 100;
+    const amtReceive = Math.round((amt - fee) * 100) / 100;
+    const orderId    = `rkpay_${req.userId}_${Date.now()}`;
+
+    // Списываем с баланса сразу
+    let txId = crypto.randomUUID();
+    await transaction(async (client) => {
+      await client.query(
+        `UPDATE users SET balance = balance - $1, total_withdrawn = total_withdrawn + $1 WHERE id = $2`,
+        [amt, req.userId]
+      );
+      await client.query(`
+        INSERT INTO transactions (id, user_id, type, amount, status, description, balance_before, balance_after, gateway_type, gateway_order_id)
+        VALUES ($1,$2,'withdrawal',$3,'pending',$4,$5,$6,'rukassa',$7)
+      `, [txId, req.userId, amtReceive,
+          `Вывод ${method === 'card' ? 'на карту' : 'СБП'}: ${account} (комиссия 5%: $${fee.toFixed(2)})`,
+          user.balance, parseFloat(user.balance) - amt, orderId]);
+      await client.query(`
+        INSERT INTO transactions (id, user_id, type, amount, status, description)
+        VALUES ($1,$2,'commission',$3,'completed',$4)
+      `, [crypto.randomUUID(), req.userId, fee, `Комиссия вывод RuKassa 5%`]);
+    });
+
+    // Отправляем выплату через RuKassa
+    const payout = await rukassa.createPayout({
+      amountUsd: amtReceive,
+      account:   account.trim(),
+      method,
+      orderId,
+    });
+
+    if (!payout.ok) {
+      // Если RuKassa вернула ошибку — возвращаем деньги обратно
+      await run(
+        `UPDATE users SET balance = balance + $1, total_withdrawn = total_withdrawn - $1 WHERE id = $2`,
+        [amt, req.userId]
+      );
+      await run(`UPDATE transactions SET status='failed' WHERE id=$1`, [txId]);
+      return res.status(502).json({ error: `Ошибка выплаты: ${payout.error}` });
+    }
+
+    // Обновляем статус транзакции
+    await run(
+      `UPDATE transactions SET status='processing', gateway_invoice_id=$1 WHERE id=$2`,
+      [payout.payoutId || '', txId]
+    );
+
+    // Уведомляем тебя
+    notify.sendTg(process.env.REPORT_CHAT_ID,
+      `💸 <b>Выплата RuKassa</b>\n\n` +
+      `👤 @${user.username}\n` +
+      `💰 $${amt.toFixed(2)} → ${amtReceive.toFixed(2)} USD (~${Math.floor(amtReceive * rukassa.USD_TO_RUB())} RUB)\n` +
+      `📱 ${method === 'card' ? 'Карта' : 'СБП'}: ${account}\n` +
+      `🆔 ID: ${payout.payoutId || orderId}`
+    ).catch(() => {});
+
+    // Уведомляем пользователя
+    if (user.telegram_id) {
+      notify.sendTg(user.telegram_id,
+        `💸 <b>Вывод средств обработан</b>\n\n` +
+        `Сумма: <b>$${amtReceive.toFixed(2)}</b> (~${Math.floor(amtReceive * rukassa.USD_TO_RUB())} RUB)\n` +
+        `Метод: ${method === 'card' ? 'Банковская карта' : 'СБП'}\n` +
+        `Реквизиты: <code>${account}</code>\n\n` +
+        `⏱ Обычно зачисляется в течение 1-24 часов`
+      ).catch(() => {});
+    }
+
+    res.json({
+      ok: true,
+      message: `Выплата отправлена! Вы получите ~${Math.floor(amtReceive * rukassa.USD_TO_RUB())} RUB на ${method === 'card' ? 'карту' : 'СБП'} в течение 24 часов.`
+    });
+  } catch (e) {
+    console.error('[RuKassa withdraw]', e);
+    res.status(500).json({ error: 'Ошибка вывода' });
   }
 });
 
