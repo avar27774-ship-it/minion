@@ -270,7 +270,7 @@ export default function AdminPage() {
   })
 
   if (!authed) return (
-    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20, background:'radial-gradient(ellipse 60% 60% at 50% 0%, rgba(245,200,66,0.06), var(--bg))' }}>
+    <div style={{ minHeight:'var(--app-height)', display:'flex', alignItems:'center', justifyContent:'center', padding:20, background:'radial-gradient(ellipse 60% 60% at 50% 0%, rgba(245,200,66,0.06), var(--bg))' }}>
       <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:24, padding:36, width:'100%', maxWidth:380 }}>
         <div style={{ textAlign:'center', marginBottom:28 }}>
           <div style={{ marginBottom:8 }}><Zap size={36} strokeWidth={1.5}/></div>
@@ -309,7 +309,7 @@ export default function AdminPage() {
   ]
 
   return (
-    <div style={{ maxWidth:1280, margin:'0 auto', padding:'24px 20px', minHeight:'100vh' }}>
+    <div style={{ maxWidth:1280, margin:'0 auto', padding:'24px 20px', minHeight:'var(--app-height)' }}>
 
       {/* Шапка */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
