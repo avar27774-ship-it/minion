@@ -91,7 +91,7 @@ export default function MessagesPage() {
   const myId = user._id || user.id
 
   return (
-    <div style={{ maxWidth:900, margin:'0 auto', padding:'0', height:'calc(100vh - 130px)', display:'flex', gap:0 }}>
+    <div style={{ maxWidth:900, margin:'0 auto', padding:'0', height:'calc(var(--app-height) - 130px)', display:'flex', gap:0 }}>
 
       {/* ── Список диалогов (слева) ── */}
       <div style={{
