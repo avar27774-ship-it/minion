@@ -244,6 +244,30 @@ export default function AdminPage() {
     setBroadcasting(false)
   }
 
+  // ── TG Mini App авто-вход ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (authed) return;
+    const tg = window.Telegram?.WebApp;
+    if (!tg || !tg.initData) return;
+
+    adminFetch('/tg-login', {
+      method: 'POST',
+      body: JSON.stringify({ initData: tg.initData }),
+    }).then(res => {
+      if (res.ok === false) return; // ошибка — пусть вводит вручную
+      if (res.role === 'superadmin' || res.role === 'subadmin') {
+        localStorage.setItem('mn_admin_token', res.adminToken);
+        setAuthed(true);
+        toast.success(res.role === 'superadmin' ? '👑 Суперадмин' : '🔑 Субадмин: @' + res.username);
+      } else if (res.role === 'user') {
+        // Обычный пользователь — сохраняем как user token и редиректим
+        localStorage.setItem('mn_token', res.userToken);
+        toast('👤 Вы вошли как @' + res.username + '. Перейдите на главную.', { icon: 'ℹ️' });
+        setTimeout(() => { window.location.href = '/'; }, 2000);
+      }
+    }).catch(() => {});
+  }, []);
+
   const openChatDialog = async (user1Id, user2Id) => {
     setChatLoading(true)
     try {
@@ -269,12 +293,19 @@ export default function AdminPage() {
     return true
   })
 
+  const isTgApp = !!(window.Telegram?.WebApp?.initData);
+
   if (!authed) return (
     <div style={{ minHeight:'var(--app-height)', display:'flex', alignItems:'center', justifyContent:'center', padding:20, background:'radial-gradient(ellipse 60% 60% at 50% 0%, rgba(245,200,66,0.06), var(--bg))' }}>
-      <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:24, padding:36, width:'100%', maxWidth:380 }}>
-        <div style={{ textAlign:'center', marginBottom:28 }}>
+      <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:24, padding:'28px 24px', width:'100%', maxWidth:380 }}>
+        <div style={{ textAlign:'center', marginBottom:24 }}>
           <div style={{ marginBottom:8 }}><Zap size={36} strokeWidth={1.5}/></div>
           <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:22 }}>Панель администратора</div>
+          {isTgApp && (
+            <div style={{ marginTop:10, fontSize:12, color:'var(--t3)', background:'rgba(245,200,66,0.06)', borderRadius:8, padding:'6px 12px' }}>
+              🤖 TG Mini App — выполняется авто-вход...
+            </div>
+          )}
         </div>
         {!twoFaStep ? (
           <>
@@ -309,7 +340,7 @@ export default function AdminPage() {
   ]
 
   return (
-    <div style={{ maxWidth:1280, margin:'0 auto', padding:'24px 20px', minHeight:'var(--app-height)' }}>
+    <div style={{ maxWidth:1280, margin:'0 auto', padding:'24px 20px', minHeight:'100vh' }}>
 
       {/* Шапка */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
