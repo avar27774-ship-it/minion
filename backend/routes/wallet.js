@@ -4,6 +4,7 @@ const { queryOne, queryAll, run, transaction } = require('../models/db');
 const { auth } = require('../middleware/auth');
 const rukassa  = require('../utils/rukassa');
 const cryptopay   = require('../utils/cryptopay');
+const crystalpay  = require('../utils/crystalpay');
 const notify   = require('../utils/notify');
 const { sanitizeUser } = require('./auth');
 const { broadcast } = require('../utils/wsEvents');
@@ -404,6 +405,59 @@ router.post('/webhook/nowpayments', async (req, res) => {
   }
 });
 
+
+// ── POST /wallet/deposit/crystalpay ──────────────────────────────────────────
+router.post('/deposit/crystalpay', auth, async (req, res) => {
+  try {
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount < MIN_DEPOSIT) return res.status(400).json({ error: `Минимум $${MIN_DEPOSIT}` });
+    if (!crystalpay.isConfigured()) return res.status(400).json({ error: 'CrystalPAY не настроен' });
+
+    const orderId    = `crp_${req.userId}_${Date.now()}`;
+    const hookUrl    = `${process.env.BACKEND_URL || ''}/api/wallet/webhook/crystalpay`;
+    const successUrl = `${process.env.FRONTEND_URL || ''}/wallet?success=1`;
+
+    const result = await crystalpay.createInvoice({ amount, orderId, hookUrl, successUrl });
+    if (!result.ok) return res.status(502).json({ error: result.error });
+
+    const user = await queryOne('SELECT balance FROM users WHERE id = $1', [req.userId]);
+    await run(`
+      INSERT INTO transactions (id, user_id, type, amount, status, description, gateway_type, gateway_invoice_id, gateway_pay_url, gateway_order_id, balance_before)
+      VALUES ($1,$2,'deposit',$3,'pending','Пополнение CrystalPAY','crystalpay',$4,$5,$6,$7)
+    `, [crypto.randomUUID(), req.userId, amount, result.invoiceId, result.payUrl, orderId, user?.balance || 0]);
+
+    res.json({ payUrl: result.payUrl, orderId });
+  } catch (e) {
+    console.error('CrystalPAY deposit error:', e);
+    res.status(500).json({ error: 'Ошибка платёжной системы' });
+  }
+});
+
+// ── POST /wallet/webhook/crystalpay ──────────────────────────────────────────
+router.post('/webhook/crystalpay', async (req, res) => {
+  try {
+    if (!crystalpay.verifyWebhook(req.body)) {
+      console.warn('[CrystalPAY] Invalid webhook signature');
+      return res.status(400).send('Invalid signature');
+    }
+
+    const { state, extra } = req.body;
+    console.log('[CrystalPAY] webhook state:', state, 'extra:', extra);
+
+    // Обрабатываем только финальный статус "payed"
+    if (state !== 'payed') return res.send('ok');
+
+    // extra — наш orderId, переданный при создании инвойса
+    const tx = await queryOne('SELECT * FROM transactions WHERE gateway_order_id = $1', [extra]);
+    if (!tx || tx.status === 'completed') return res.send('ok');
+
+    await creditUser(tx);
+    res.send('ok');
+  } catch (e) {
+    console.error('[CrystalPAY] webhook error:', e);
+    res.status(500).send('error');
+  }
+});
 // ── Internal: creditUser ───────────────────────────────────────────────────────
 async function creditUser(tx) {
   await transaction(async (client) => {
