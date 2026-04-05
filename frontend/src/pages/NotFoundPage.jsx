@@ -16,7 +16,7 @@ export default function NotFoundPage() {
   }, [])
 
   return (
-    <div style={{ position:'relative', minHeight:'100vh', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+    <div style={{ position:'relative', minHeight:'var(--app-height)', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
       {/* Particles фон */}
       <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
         <DarkVeil
