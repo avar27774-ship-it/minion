@@ -330,6 +330,164 @@ async function initSchema() {
     );
   `);
 
+  // ── Расширенные лог-таблицы ──────────────────────────────────────────────
+  await query(`
+    -- Полный лог сессий (вход, выход, токены)
+    CREATE TABLE IF NOT EXISTS session_logs (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
+      username    TEXT,
+      telegram_id TEXT,
+      event       TEXT NOT NULL,
+      platform    TEXT,
+      ip          TEXT,
+      user_agent  TEXT,
+      device      TEXT,
+      country     TEXT,
+      details     JSONB,
+      created_at  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    -- Полный лог чатов (все сообщения между пользователями)
+    CREATE TABLE IF NOT EXISTS chat_logs (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      sender_id   TEXT REFERENCES users(id) ON DELETE SET NULL,
+      receiver_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      sender_name TEXT,
+      receiver_name TEXT,
+      message_id  TEXT,
+      text        TEXT,
+      image       TEXT,
+      context     TEXT,
+      deal_id     TEXT,
+      created_at  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    -- Лог всех действий пользователей (каждый клик/запрос)
+    CREATE TABLE IF NOT EXISTS action_logs (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
+      username    TEXT,
+      action      TEXT NOT NULL,
+      entity      TEXT,
+      entity_id   TEXT,
+      old_value   JSONB,
+      new_value   JSONB,
+      ip          TEXT,
+      platform    TEXT,
+      details     JSONB,
+      created_at  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    -- Лог бота (все входящие и исходящие сообщения Telegram бота)
+    CREATE TABLE IF NOT EXISTS bot_logs (
+      id           TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      telegram_id  TEXT,
+      username     TEXT,
+      direction    TEXT NOT NULL,
+      message_type TEXT,
+      text         TEXT,
+      command      TEXT,
+      response     TEXT,
+      details      JSONB,
+      created_at   BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    -- Лог платежей (детальный, с каждым шагом)
+    CREATE TABLE IF NOT EXISTS payment_logs (
+      id           TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id      TEXT REFERENCES users(id) ON DELETE SET NULL,
+      username     TEXT,
+      gateway      TEXT NOT NULL,
+      event        TEXT NOT NULL,
+      amount       NUMERIC(12,2),
+      currency     TEXT,
+      order_id     TEXT,
+      invoice_id   TEXT,
+      status       TEXT,
+      raw_payload  JSONB,
+      ip           TEXT,
+      created_at   BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    -- Лог API запросов (все HTTP запросы к бэкенду)
+    CREATE TABLE IF NOT EXISTS api_logs (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
+      username    TEXT,
+      method      TEXT,
+      path        TEXT,
+      status_code INTEGER,
+      duration_ms INTEGER,
+      ip          TEXT,
+      user_agent  TEXT,
+      body_size   INTEGER,
+      created_at  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    -- Лог ошибок (все серверные ошибки)
+    CREATE TABLE IF NOT EXISTS error_logs (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
+      error_type  TEXT,
+      message     TEXT,
+      stack       TEXT,
+      path        TEXT,
+      ip          TEXT,
+      details     JSONB,
+      created_at  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    -- Лог AI действий (каждый запрос к AI и ответ)
+    CREATE TABLE IF NOT EXISTS ai_logs (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      context     TEXT NOT NULL,
+      model       TEXT,
+      prompt_len  INTEGER,
+      response    TEXT,
+      tokens_used INTEGER,
+      duration_ms INTEGER,
+      success     INTEGER DEFAULT 1,
+      error       TEXT,
+      created_at  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    -- Лог сделок (каждое изменение статуса)
+    CREATE TABLE IF NOT EXISTS deal_status_logs (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      deal_id     TEXT NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+      actor_id    TEXT REFERENCES users(id) ON DELETE SET NULL,
+      actor_name  TEXT,
+      old_status  TEXT,
+      new_status  TEXT,
+      note        TEXT,
+      ip          TEXT,
+      created_at  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    -- Лог просмотров страниц (фронтенд аналитика)
+    CREATE TABLE IF NOT EXISTS page_views (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
+      session_id  TEXT,
+      path        TEXT,
+      referrer    TEXT,
+      ip          TEXT,
+      user_agent  TEXT,
+      created_at  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    -- Поисковые запросы
+    CREATE TABLE IF NOT EXISTS search_logs (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
+      query       TEXT,
+      results     INTEGER,
+      ip          TEXT,
+      created_at  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+  `);
+
   // ── Миграции (безопасные ALTER TABLE) ────────────────────────────────────
   await query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
@@ -381,6 +539,25 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_reports_status        ON reports(status, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_messages_sender       ON messages(sender_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_messages_receiver     ON messages(receiver_id, is_read, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_session_logs_user     ON session_logs(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_session_logs_event    ON session_logs(event, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_session_logs_ip       ON session_logs(ip, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_chat_logs_sender      ON chat_logs(sender_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_chat_logs_receiver    ON chat_logs(receiver_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_chat_logs_deal        ON chat_logs(deal_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_action_logs_user      ON action_logs(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_action_logs_action    ON action_logs(action, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_bot_logs_tgid         ON bot_logs(telegram_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_payment_logs_user     ON payment_logs(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_payment_logs_gateway  ON payment_logs(gateway, event, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_api_logs_user         ON api_logs(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_api_logs_path         ON api_logs(path, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_error_logs_type       ON error_logs(error_type, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ai_logs_context       ON ai_logs(context, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_deal_status_logs_deal ON deal_status_logs(deal_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_page_views_user       ON page_views(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_search_logs_user      ON search_logs(user_id, created_at DESC);
   `);
 
   // ── Seed categories ───────────────────────────────────────────────────────
@@ -468,7 +645,127 @@ async function snapshotDailyStats() {
   return today;
 }
 
+// ── Логирование сессий (вход/выход/токены) ───────────────────────────────────
+async function logSession(userId, username, telegramId, event, platform, ip, userAgent, details) {
+  const device = userAgent
+    ? (userAgent.includes('Mobile') ? 'mobile' : 'desktop')
+    : 'unknown';
+  return run(
+    `INSERT INTO session_logs (user_id, username, telegram_id, event, platform, ip, user_agent, device, details, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [userId||null, username||null, telegramId||null, event, platform||'web',
+     ip||null, userAgent||null, device, details ? JSON.stringify(details) : null]
+  ).catch(() => {});
+}
+
+// ── Логирование чатов (все сообщения) ────────────────────────────────────────
+async function logChat(senderId, receiverId, senderName, receiverName, messageId, text, image, context, dealId) {
+  return run(
+    `INSERT INTO chat_logs (sender_id, receiver_id, sender_name, receiver_name, message_id, text, image, context, deal_id, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [senderId||null, receiverId||null, senderName||null, receiverName||null,
+     messageId||null, text||null, image||null, context||'direct', dealId||null]
+  ).catch(() => {});
+}
+
+// ── Логирование действий пользователей ───────────────────────────────────────
+async function logAction(userId, username, action, entity, entityId, oldValue, newValue, ip, platform, details) {
+  return run(
+    `INSERT INTO action_logs (user_id, username, action, entity, entity_id, old_value, new_value, ip, platform, details, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [userId||null, username||null, action, entity||null, entityId||null,
+     oldValue ? JSON.stringify(oldValue) : null,
+     newValue ? JSON.stringify(newValue) : null,
+     ip||null, platform||'web',
+     details ? JSON.stringify(details) : null]
+  ).catch(() => {});
+}
+
+// ── Логирование бота ──────────────────────────────────────────────────────────
+async function logBot(telegramId, username, direction, messageType, text, command, response, details) {
+  return run(
+    `INSERT INTO bot_logs (telegram_id, username, direction, message_type, text, command, response, details, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [String(telegramId||''), username||null, direction, messageType||'text',
+     text ? text.slice(0,2000) : null, command||null,
+     response ? response.slice(0,2000) : null,
+     details ? JSON.stringify(details) : null]
+  ).catch(() => {});
+}
+
+// ── Логирование платежей ──────────────────────────────────────────────────────
+async function logPayment(userId, username, gateway, event, amount, currency, orderId, invoiceId, status, rawPayload, ip) {
+  return run(
+    `INSERT INTO payment_logs (user_id, username, gateway, event, amount, currency, order_id, invoice_id, status, raw_payload, ip, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [userId||null, username||null, gateway, event, amount||null, currency||null,
+     orderId||null, invoiceId||null, status||null,
+     rawPayload ? JSON.stringify(rawPayload) : null, ip||null]
+  ).catch(() => {});
+}
+
+// ── Логирование API запросов ──────────────────────────────────────────────────
+async function logApi(userId, username, method, path, statusCode, durationMs, ip, userAgent, bodySize) {
+  return run(
+    `INSERT INTO api_logs (user_id, username, method, path, status_code, duration_ms, ip, user_agent, body_size, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [userId||null, username||null, method, path, statusCode||null,
+     durationMs||null, ip||null, userAgent||null, bodySize||null]
+  ).catch(() => {});
+}
+
+// ── Логирование ошибок ────────────────────────────────────────────────────────
+async function logError(userId, errorType, message, stack, path, ip, details) {
+  return run(
+    `INSERT INTO error_logs (user_id, error_type, message, stack, path, ip, details, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [userId||null, errorType||'unknown', message||null,
+     stack ? stack.slice(0,3000) : null, path||null, ip||null,
+     details ? JSON.stringify(details) : null]
+  ).catch(() => {});
+}
+
+// ── Логирование AI ────────────────────────────────────────────────────────────
+async function logAi(context, model, promptLen, response, durationMs, success, error) {
+  return run(
+    `INSERT INTO ai_logs (context, model, prompt_len, response, duration_ms, success, error, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [context, model||'groq/llama3', promptLen||null,
+     response ? response.slice(0,1000) : null,
+     durationMs||null, success?1:0, error||null]
+  ).catch(() => {});
+}
+
+// ── Логирование смены статуса сделки ─────────────────────────────────────────
+async function logDealStatus(dealId, actorId, actorName, oldStatus, newStatus, note, ip) {
+  return run(
+    `INSERT INTO deal_status_logs (deal_id, actor_id, actor_name, old_status, new_status, note, ip, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [dealId, actorId||null, actorName||null, oldStatus||null, newStatus||null, note||null, ip||null]
+  ).catch(() => {});
+}
+
+// ── Логирование просмотров страниц ───────────────────────────────────────────
+async function logPageView(userId, sessionId, path, referrer, ip, userAgent) {
+  return run(
+    `INSERT INTO page_views (user_id, session_id, path, referrer, ip, user_agent, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [userId||null, sessionId||null, path||null, referrer||null, ip||null, userAgent||null]
+  ).catch(() => {});
+}
+
+// ── Логирование поиска ────────────────────────────────────────────────────────
+async function logSearch(userId, queryText, results, ip) {
+  return run(
+    `INSERT INTO search_logs (user_id, query, results, ip, created_at)
+     VALUES ($1,$2,$3,$4,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+    [userId||null, queryText||null, results||0, ip||null]
+  ).catch(() => {});
+}
+
 module.exports = {
   query, queryOne, queryAll, run, transaction, pool,
   initSchema, auditLog, saveNotification, snapshotDailyStats,
+  logSession, logChat, logAction, logBot, logPayment,
+  logApi, logError, logAi, logDealStatus, logPageView, logSearch,
 };
