@@ -125,7 +125,7 @@ export default function ProfilePage() {
   )
 
   return (
-    <div style={{ position:'relative', minHeight:'100vh', overflow:'hidden' }}>
+    <div style={{ position:'relative', minHeight:'var(--app-height)', overflow:'hidden' }}>
       {/* Aurora фон */}
       <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
         <Aurora
