@@ -3,6 +3,7 @@ const crypto  = require('crypto');
 const { queryOne, queryAll, run, transaction } = require('../models/db');
 const { auth } = require('../middleware/auth');
 const notify  = require('../utils/notify');
+const { broadcast } = require('../utils/wsEvents');
 
 const COMMISSION_RATE     = 0.05;
 const AUTO_COMPLETE_HOURS = 72;
@@ -138,6 +139,14 @@ router.post('/', auth, async (req, res) => {
 
     notify.notifyPurchase(buyer, seller, product.title, amount).catch(() => {});
     const deal = await queryOne(`${DEAL_SELECT} WHERE d.id = $1`, [dealId]);
+    broadcast('deal_created', {
+      dealId,
+      amount,
+      product: product.title,
+      buyer: buyer.username,
+      seller: seller.username,
+      dealNumber: deal?.deal_number,
+    });
     res.status(201).json(parseDeal(deal));
   } catch (e) {
     console.error('Create deal error:', e);
@@ -261,6 +270,14 @@ router.post('/:id/dispute', auth, async (req, res) => {
       queryOne('SELECT title FROM products WHERE id = $1', [deal.product_id]),
     ]);
     notify.notifyDealDispute(buyer, seller, product?.title || '').catch(() => {});
+
+    broadcast('deal_disputed', {
+      dealId: req.params.id,
+      product: product?.title,
+      buyer: buyer.username,
+      seller: seller.username,
+      reason,
+    });
 
     const admins = await queryAll('SELECT telegram_id FROM users WHERE is_admin = 1 AND telegram_id IS NOT NULL');
     admins.forEach(a => {
@@ -406,6 +423,15 @@ async function completeDeal(deal, reason = 'auto') {
     );
 
     notify.notifyDealComplete(buyer, seller, product?.title || '', sellerAmount).catch(() => {});
+    broadcast('deal_completed', {
+      dealId: deal.id,
+      amount: parseFloat(deal.amount),
+      sellerAmount,
+      product: product?.title,
+      buyer: buyer.username,
+      seller: seller.username,
+      reason,
+    });
   });
 
   // Начисляем реферальное вознаграждение партнёру
