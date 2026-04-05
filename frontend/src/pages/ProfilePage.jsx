@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import ProductCard from '../components/ProductCard'
 import ProfileCard from '../components/ProfileCard/ProfileCard'
 import Aurora from '../components/Aurora/Aurora'
-import { UserCircle, Package, ShoppingCart, Calendar, Wallet, Zap, Star } from '../components/Icon'
+import { UserCircle, Package, ShoppingCart, Calendar, Wallet, Zap, Star, Heart } from '../components/Icon'
 
 class CardBoundary extends Component {
   state = { error: false }
@@ -44,6 +44,7 @@ export default function ProfilePage() {
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState(null)
   const [tab, setTab]           = useState('products')
+  const [favorites, setFavorites] = useState([])
 
   useMeta(profile ? {
     title: `@${profile.username} — профиль продавца`,
@@ -54,15 +55,19 @@ export default function ProfilePage() {
     if (!hydrated) return
     const targetId = id || me?._id || me?.id
     if (!targetId) { navigate('/auth'); return }
+    const isMyProfile = !id || id === (me?._id || me?.id)
     setLoading(true)
     setError(null)
-    api.get(`/users/${targetId}`)
-      .then(r => {
+    const requests = [api.get(`/users/${targetId}`)]
+    if (isMyProfile) requests.push(api.get('/users/me/favorites').catch(() => ({ data: { products: [] } })))
+    Promise.all(requests)
+      .then(([r, favR]) => {
         setProfile(r.data.user)
         setProducts(r.data.products || [])
         setReviews(r.data.reviews || [])
+        if (favR) setFavorites(favR.data.products || [])
       })
-      .catch(e => { setError('Пользователь не найден'); toast.error('Пользователь не найден') })
+      .catch(() => { setError('Пользователь не найден'); toast.error('Пользователь не найден') })
       .finally(() => setLoading(false))
   }, [id, me, hydrated])
 
@@ -223,14 +228,18 @@ export default function ProfilePage() {
           </div>
 
           {/* Табы */}
-          <div style={{ display:'flex', gap:8, marginBottom:20 }}>
-            {[['products',`Товары (${products.length})`],['reviews',`Отзывы (${reviews.length})`]].map(([v,l]) => (
+          <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+            {[
+              ['products', `Товары (${products.length})`],
+              ['reviews',  `Отзывы (${reviews.length})`],
+              ...(!id || id === (me?._id || me?.id) ? [['favorites', `Избранное (${favorites.length})`]] : [])
+            ].map(([v,l]) => (
               <button key={v} onClick={() => setTab(v)} style={{
                 padding:'10px 20px', borderRadius:10, border:'1px solid', cursor:'pointer',
                 fontSize:13, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
-                background: tab===v ? 'rgba(245,200,66,0.1)' : 'transparent',
-                borderColor: tab===v ? 'rgba(245,200,66,0.4)' : 'var(--border)',
-                color: tab===v ? 'var(--accent)' : 'var(--t3)',
+                background: tab===v ? (v==='favorites' ? 'rgba(231,76,60,0.1)' : 'rgba(245,200,66,0.1)') : 'transparent',
+                borderColor: tab===v ? (v==='favorites' ? 'rgba(231,76,60,0.4)' : 'rgba(245,200,66,0.4)') : 'var(--border)',
+                color: tab===v ? (v==='favorites' ? '#e74c3c' : 'var(--accent)') : 'var(--t3)',
               }}>{l}</button>
             ))}
           </div>
@@ -272,6 +281,24 @@ export default function ProfilePage() {
                       {r.text && <p style={{ color:'var(--t2)', fontSize:13, lineHeight:1.7, margin:0 }}>{r.text}</p>}
                     </div>
                   ))}
+                </div>
+          )}
+
+          {tab === 'favorites' && (
+            favorites.length === 0
+              ? <div style={{ textAlign:'center', padding:'60px 20px', color:'var(--t3)' }}>
+                  <Heart size={40} strokeWidth={0.75} style={{marginBottom:12, opacity:0.3}}/>
+                  <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:18, marginBottom:8 }}>Избранное пусто</div>
+                  <div style={{ fontSize:13, marginBottom:20 }}>Добавляйте товары в избранное нажав ❤️ на странице товара</div>
+                  <Link to="/catalog" className="btn btn-primary">Перейти в каталог</Link>
+                </div>
+              : <div>
+                  <div style={{ fontSize:13, color:'var(--t3)', marginBottom:16 }}>
+                    {favorites.length} {favorites.length === 1 ? 'товар' : favorites.length < 5 ? 'товара' : 'товаров'} в избранном
+                  </div>
+                  <div className="profile-products-grid">
+                    {favorites.map(p => <ProductCard key={p.id||p._id} product={p}/>)}
+                  </div>
                 </div>
           )}
         </div>
