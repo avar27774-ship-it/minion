@@ -59,14 +59,41 @@ const collections = {
 };
 
 /**
+ * Собрать URI из доступных переменных Railway
+ */
+function buildMongoUri() {
+  // Вариант 1: готовая строка (любое название)
+  if (process.env.MONGODB_URI) return process.env.MONGODB_URI;
+  if (process.env.MONGODB_URL) return process.env.MONGODB_URL;
+  if (process.env.MONGO_URL)   return process.env.MONGO_URL;
+
+  // Вариант 2: Railway отдельные переменные
+  const host     = process.env.MONGOHOST;
+  const port     = process.env.MONGOPORT || '27017';
+  const user     = process.env.MONGOUSER || process.env.MONGO_INITDB_ROOT_USERNAME;
+  const password = process.env.MONGOPASSWORD || process.env.MONGO_INITDB_ROOT_PASSWORD;
+  const dbName   = process.env.MONGODATABASE || 'railway';
+
+  if (host && user && password) {
+    const encodedPass = encodeURIComponent(password);
+    return `mongodb://${user}:${encodedPass}@${host}:${port}/${dbName}?authSource=admin`;
+  }
+
+  return null;
+}
+
+/**
  * Подключиться к MongoDB. Вызывать один раз при старте сервера.
  */
 async function connectMongo() {
-  const uri = process.env.MONGODB_URI;
+  const uri = buildMongoUri();
   if (!uri) {
-    console.warn('[MongoDB] MONGODB_URI не задан — MongoDB отключена. Логи пишутся только в PostgreSQL.');
+    console.warn('[MongoDB] URI не найден — MongoDB отключена.');
+    console.warn('[MongoDB] Добавьте MONGO_URL или MONGOHOST/MONGOUSER/MONGOPASSWORD в переменные бэкенд сервиса.');
     return false;
   }
+
+  console.log('[MongoDB] Подключаюсь...');
 
   try {
     client = new MongoClient(uri, {
@@ -76,7 +103,7 @@ async function connectMongo() {
     });
 
     await client.connect();
-    db = client.db(); // имя БД берётся из URI или можно задать: client.db('minions')
+    db = client.db('railway');
 
     // Привязываем коллекции
     collections.eventLogs   = db.collection('event_logs');
