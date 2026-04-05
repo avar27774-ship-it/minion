@@ -510,6 +510,18 @@ async function initSchema() {
     ALTER TABLE deals ADD COLUMN IF NOT EXISTS refund_reason TEXT;
 
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS image TEXT;
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT,
+      icon TEXT DEFAULT '🔔',
+      link TEXT,
+      is_read INTEGER DEFAULT 0,
+      created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
   `);
 
   // Заполняем deal_number для старых сделок у которых его нет
