@@ -103,7 +103,7 @@ export default function AuthPage() {
   )
 
   return (
-    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20, position:'relative', overflow:'hidden', background:'var(--bg)' }}>
+    <div style={{ minHeight:'var(--app-height)', display:'flex', alignItems:'center', justifyContent:'center', padding:20, position:'relative', overflow:'hidden', background:'var(--bg)' }}>
 
       {/* MagicRings фон */}
       <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
