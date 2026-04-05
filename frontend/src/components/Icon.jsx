@@ -72,6 +72,7 @@ export const Download     = svg('<polyline points="8 17 12 21 16 17"/><line x1="
 export const ArrowRight   = svg('<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>')
 export const ArrowLeft    = svg('<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>')
 export const ChevronRight = svg('<polyline points="9 18 15 12 9 6"/>')
+export const ChevronLeft  = svg('<polyline points="15 18 9 12 15 6"/>')
 export const ChevronDown  = svg('<polyline points="6 9 12 15 18 9"/>')
 export const ChevronUp    = svg('<polyline points="18 15 12 9 6 15"/>')
 export const Check        = svg('<polyline points="20 6 9 17 4 12"/>')
