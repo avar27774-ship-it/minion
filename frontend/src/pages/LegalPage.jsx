@@ -265,8 +265,8 @@ const PAGES = {
       {
         icon: '💬',
         label: 'Telegram поддержка',
-        value: '@givi_hu',
-        href: 'https://t.me/givi_hu',
+        value: '@for_ewer0721',
+        href: 'https://t.me/for_ewer0721',
         desc: 'Быстрый ответ — до 2 часов',
       },
       {
