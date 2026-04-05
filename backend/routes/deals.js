@@ -20,6 +20,7 @@ function parseDeal(d) {
   d.autoCompleteAt = d.auto_complete_at ? new Date(d.auto_complete_at * 1000) : null;
   d.buyerConfirmed  = !!d.buyer_confirmed;
   d.sellerConfirmed = !!d.seller_confirmed;
+  d.hasReview       = parseInt(d.has_review || 0) > 0;
   d.createdAt    = new Date(d.created_at * 1000);
   d.updatedAt    = new Date(d.updated_at * 1000);
 
@@ -39,7 +40,7 @@ function parseDeal(d) {
   ['product_title','product_price','buyer_username','buyer_first_name',
    'seller_username','seller_first_name','delivery_data','delivered_at',
    'auto_complete_at','buyer_confirmed','seller_confirmed','seller_amount',
-   'messages_raw'].forEach(k => delete d[k]);
+   'messages_raw','has_review'].forEach(k => delete d[k]);
   return d;
 }
 
@@ -49,6 +50,7 @@ const DEAL_SELECT = `
     p.price   as product_price,
     b.username   as buyer_username,  b.first_name as buyer_first_name,
     s.username   as seller_username, s.first_name as seller_first_name,
+    (SELECT COUNT(*) FROM reviews r WHERE r.deal_id = d.id) as has_review,
     (SELECT json_agg(json_build_object(
       'sender', dm.sender_id, 'text', dm.text,
       'isSystem', dm.is_system::boolean, 'timestamp', dm.created_at
