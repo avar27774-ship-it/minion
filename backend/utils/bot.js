@@ -27,6 +27,85 @@ function sendMessage(chatId, text, opts = {}) {
   });
 }
 
+// ── Управление каналом ────────────────────────────────────────────────────────
+function getChannelId() {
+  return process.env.CHANNEL_ID || '';
+}
+
+function channelRequest(method, params) {
+  const token = TOKEN();
+  if (!token) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const body = JSON.stringify(params);
+    const req = https.request({
+      hostname: 'api.telegram.org',
+      path: `/bot${token}/${method}`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    }, (r) => {
+      let data = '';
+      r.on('data', d => data += d);
+      r.on('end', () => {
+        try { resolve(JSON.parse(data)); } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(10000, () => { req.destroy(); resolve(null); });
+    req.write(body);
+    req.end();
+  });
+}
+
+async function sendChannelMessage(text, opts = {}) {
+  const channelId = getChannelId();
+  if (!channelId) return null;
+  return channelRequest('sendMessage', {
+    chat_id: channelId,
+    text,
+    parse_mode: 'HTML',
+    ...opts,
+  });
+}
+
+async function pinChannelMessage(messageId) {
+  const channelId = getChannelId();
+  if (!channelId || !messageId) return null;
+  return channelRequest('pinChatMessage', {
+    chat_id: channelId,
+    message_id: messageId,
+    disable_notification: false,
+  });
+}
+
+async function unpinChannelMessage(messageId) {
+  const channelId = getChannelId();
+  if (!channelId) return null;
+  const params = { chat_id: channelId };
+  if (messageId) params.message_id = messageId;
+  return channelRequest('unpinChatMessage', params);
+}
+
+async function getChannelInfo() {
+  const channelId = getChannelId();
+  if (!channelId) return null;
+  return channelRequest('getChat', { chat_id: channelId });
+}
+
+async function getChannelMemberCount() {
+  const channelId = getChannelId();
+  if (!channelId) return null;
+  return channelRequest('getChatMemberCount', { chat_id: channelId });
+}
+
+async function deleteChannelMessage(messageId) {
+  const channelId = getChannelId();
+  if (!channelId || !messageId) return null;
+  return channelRequest('deleteMessage', { chat_id: channelId, message_id: messageId });
+}
+
+// Хранилище последних опубликованных сообщений (в памяти, для текущей сессии)
+const lastChannelMessages = [];
+
 // ── Запрос к Grok (xAI) ──────────────────────────────────────────────────────
 function askGrok(system, userMsg) {
   const apiKey = process.env.XAI_API_KEY;
@@ -166,7 +245,7 @@ async function handleUpdate(update) {
   // ── /start ────────────────────────────────────────────────────────────────
   if (text.startsWith('/start')) {
     const adminCmds = isAdmin(chatId)
-      ? '\n\n🔧 <b>Админ:</b>\n• /admin — открыть админ панель\n• /report — отчёт\n• /monitor — проверка сайта\n• /top — топ продавцов и товаров\n• /radar — подозрительные юзеры\n• /dead — мёртвые товары\n• /vibe — настроение рынка AI\n• /predict — прогноз категорий AI\n• /freeze [логин] — заморозить\n• /msg [логин] [текст] — написать\n• /promo [код] [%] — промокод\n• /ai_on /ai_off /ai_status'
+      ? '\n\n🔧 <b>Админ:</b>\n• /admin — открыть админ панель\n• /report — отчёт\n• /monitor — проверка сайта\n• /top — топ продавцов и товаров\n• /radar — подозрительные юзеры\n• /dead — мёртвые товары\n• /vibe — настроение рынка AI\n• /predict — прогноз категорий AI\n• /freeze [логин] — заморозить\n• /msg [логин] [текст] — написать\n• /promo [код] [%] — промокод\n• /ai_on /ai_off /ai_status\n\n📡 <b>Канал:</b>\n• /channel — управление каналом\n• /post [текст] — опубликовать\n• /postpin [текст] — пост + закрепить\n• /announce [текст] — анонс\n• /newproduct — анонс товара\n• /autopromo — AI-промо\n• /channelstats — статистика'
       : '';
     const miniAppUrl = process.env.FRONTEND_URL || process.env.BACKEND_URL || '';
     await sendMessage(chatId,
@@ -191,7 +270,7 @@ async function handleUpdate(update) {
   // ── /help ─────────────────────────────────────────────────────────────────
   if (text === '/help') {
     const adminCmds = isAdmin(chatId)
-      ? '\n\n🔧 Команды администратора:\n/report /monitor /top /radar /dead\n/vibe /predict /freeze /msg /promo\n/ai_on /ai_off /ai_status'
+      ? '\n\n🔧 Команды администратора:\n/report /monitor /top /radar /dead\n/vibe /predict /freeze /msg /promo\n/ai_on /ai_off /ai_status\n\n📡 Управление каналом:\n/channel /post /postpin /announce\n/newproduct /autopromo /channelstats'
       : '';
     await sendMessage(chatId,
       '🟡 <b>Minions Market — Помощь</b>\n\n' +
@@ -774,6 +853,321 @@ async function handleUpdate(update) {
   }
 
 
+
+  // ── /channel — статус и помощь по каналу ─────────────────────────────────
+  if (text === '/channel') {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    const channelId = getChannelId();
+    if (!channelId) {
+      await sendMessage(chatId,
+        '⚠️ <b>CHANNEL_ID не задан!</b>\\n\\n' +
+        'Добавьте переменную окружения в Railway:\\n' +
+        '<code>CHANNEL_ID = @your_channel</code> или числовой ID канала.\\n\\n' +
+        'Бот должен быть администратором канала.'
+      );
+      return;
+    }
+    const info = await getChannelInfo();
+    const count = await getChannelMemberCount();
+    if (!info || !info.ok) {
+      await sendMessage(chatId,
+        '❌ Не удаётся подключиться к каналу <code>' + channelId + '</code>\\n\\n' +
+        'Убедитесь что:\\n' +
+        '1. Бот добавлен в канал как <b>администратор</b>\\n' +
+        '2. У бота есть права: Публикация, Редактирование, Закрепление'
+      );
+      return;
+    }
+    const ch = info.result;
+    await sendMessage(chatId,
+      '📡 <b>Канал подключён!</b>\\n\\n' +
+      '📌 Название: <b>' + (ch.title || '—') + '</b>\\n' +
+      '🔗 Username: ' + (ch.username ? '@' + ch.username : 'приватный') + '\\n' +
+      '👥 Подписчиков: <b>' + (count?.result || '?') + '</b>\\n\\n' +
+      '📋 <b>Команды управления каналом:</b>\\n' +
+      '/post [текст] — опубликовать пост\\n' +
+      '/postpin [текст] — пост + закрепить\\n' +
+      '/announce [текст] — анонс с шаблоном\\n' +
+      '/newproduct [название] [цена] [категория] — анонс нового товара\\n' +
+      '/promo [код] [%] — создать промокод и анонсировать\\n' +
+      '/channelstats — статистика канала\\n' +
+      '/lastposts — список последних постов сессии\\n' +
+      '/delpost [ID] — удалить пост из канала\\n' +
+      '/unpin — открепить сообщение\\n' +
+      '/autopromo — анонс случайного топ-товара AI'
+    );
+    return;
+  }
+
+  // ── /channelstats — статистика канала ────────────────────────────────────
+  if (text === '/channelstats') {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    const channelId = getChannelId();
+    if (!channelId) { await sendMessage(chatId, '⚠️ Добавьте CHANNEL_ID в Railway.'); return; }
+
+    try {
+      const info  = await getChannelInfo();
+      const count = await getChannelMemberCount();
+
+      if (!info?.ok) { await sendMessage(chatId, '❌ Не удаётся получить данные канала. Бот — администратор?'); return; }
+
+      const ch = info.result;
+
+      // Статистика платформы за последние 24ч
+      const dayAgo = Math.floor(Date.now() / 1000) - 86400;
+      const newUsers = await queryOne('SELECT COUNT(*) as c FROM users WHERE created_at > $1', [dayAgo]).catch(() => ({c:0}));
+      const newDeals = await queryOne("SELECT COUNT(*) as c, COALESCE(SUM(amount),0) as v FROM deals WHERE created_at > $1 AND status='completed'", [dayAgo]).catch(() => ({c:0,v:0}));
+
+      let msg = '📊 <b>Статистика канала</b>\\n\\n';
+      msg += '📌 <b>' + (ch.title || 'Канал') + '</b>\\n';
+      msg += '👥 Подписчиков: <b>' + (count?.result || '?') + '</b>\\n';
+      if (ch.description) msg += '📝 ' + ch.description.slice(0, 80) + '\\n';
+      msg += '\\n💼 <b>Платформа (24ч):</b>\\n';
+      msg += '• Новых юзеров: <b>' + newUsers.c + '</b>\\n';
+      msg += '• Сделок: <b>' + newDeals.c + '</b> на $' + parseFloat(newDeals.v||0).toFixed(2) + '\\n';
+      msg += '\\n🕐 ' + new Date().toLocaleString('ru');
+
+      await sendMessage(chatId, msg);
+    } catch(e) { await sendMessage(chatId, '❌ Ошибка: ' + e.message); }
+    return;
+  }
+
+  // ── /post [текст] — опубликовать пост в канал ─────────────────────────────
+  if (text.startsWith('/post ') && !text.startsWith('/postpin ')) {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    const channelId = getChannelId();
+    if (!channelId) { await sendMessage(chatId, '⚠️ Добавьте CHANNEL_ID в Railway.'); return; }
+
+    const postText = text.slice(6).trim();
+    if (!postText) { await sendMessage(chatId, '❗ Укажите текст поста.\\nПример: <code>/post Новый товар в каталоге!</code>'); return; }
+
+    try {
+      const result = await sendChannelMessage(postText);
+      if (result?.ok) {
+        const msgId = result.result.message_id;
+        lastChannelMessages.unshift({ id: msgId, text: postText.slice(0, 50), time: Date.now() });
+        if (lastChannelMessages.length > 20) lastChannelMessages.pop();
+        await sendMessage(chatId,
+          '✅ <b>Пост опубликован!</b>\\n\\n' +
+          'ID сообщения: <code>' + msgId + '</code>\\n' +
+          'Закрепить: /postpin\\n' +
+          'Удалить: <code>/delpost ' + msgId + '</code>'
+        );
+      } else {
+        await sendMessage(chatId, '❌ Ошибка публикации: ' + (result?.description || 'неизвестная ошибка'));
+      }
+    } catch(e) { await sendMessage(chatId, '❌ Ошибка: ' + e.message); }
+    return;
+  }
+
+  // ── /postpin [текст] — пост + закрепить ──────────────────────────────────
+  if (text.startsWith('/postpin ')) {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    const channelId = getChannelId();
+    if (!channelId) { await sendMessage(chatId, '⚠️ Добавьте CHANNEL_ID в Railway.'); return; }
+
+    const postText = text.slice(9).trim();
+    if (!postText) { await sendMessage(chatId, '❗ Укажите текст поста.\\nПример: <code>/postpin Важное объявление!</code>'); return; }
+
+    try {
+      const result = await sendChannelMessage(postText);
+      if (result?.ok) {
+        const msgId = result.result.message_id;
+        lastChannelMessages.unshift({ id: msgId, text: postText.slice(0, 50), time: Date.now() });
+        if (lastChannelMessages.length > 20) lastChannelMessages.pop();
+        const pinResult = await pinChannelMessage(msgId);
+        await sendMessage(chatId,
+          '✅ <b>Пост опубликован и закреплён!</b>\\n\\n' +
+          'ID: <code>' + msgId + '</code>\\n' +
+          (pinResult?.ok ? '📌 Закреплено успешно' : '⚠️ Опубликовано, но закрепить не удалось')
+        );
+      } else {
+        await sendMessage(chatId, '❌ Ошибка публикации: ' + (result?.description || 'неизвестная ошибка'));
+      }
+    } catch(e) { await sendMessage(chatId, '❌ Ошибка: ' + e.message); }
+    return;
+  }
+
+  // ── /announce [текст] — красивый анонс с шаблоном ────────────────────────
+  if (text.startsWith('/announce ')) {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    const channelId = getChannelId();
+    if (!channelId) { await sendMessage(chatId, '⚠️ Добавьте CHANNEL_ID в Railway.'); return; }
+
+    const annText = text.slice(10).trim();
+    if (!annText) { await sendMessage(chatId, '❗ Укажите текст объявления.'); return; }
+
+    const siteUrl = process.env.FRONTEND_URL || process.env.BACKEND_URL || '';
+    const fullText =
+      '📢 <b>Minions Market</b>\\n\\n' +
+      annText + '\\n\\n' +
+      (siteUrl ? '🛒 <a href="' + siteUrl + '">Перейти на маркетплейс</a>' : '');
+
+    try {
+      const result = await sendChannelMessage(fullText, {
+        disable_web_page_preview: false,
+      });
+      if (result?.ok) {
+        const msgId = result.result.message_id;
+        lastChannelMessages.unshift({ id: msgId, text: annText.slice(0, 50), time: Date.now() });
+        if (lastChannelMessages.length > 20) lastChannelMessages.pop();
+        await sendMessage(chatId, '✅ <b>Анонс опубликован!</b>\\nID: <code>' + msgId + '</code>');
+      } else {
+        await sendMessage(chatId, '❌ Ошибка: ' + (result?.description || 'неизвестная ошибка'));
+      }
+    } catch(e) { await sendMessage(chatId, '❌ Ошибка: ' + e.message); }
+    return;
+  }
+
+  // ── /newproduct [название] | [цена] | [категория] — анонс нового товара ──
+  if (text.startsWith('/newproduct ')) {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    const channelId = getChannelId();
+    if (!channelId) { await sendMessage(chatId, '⚠️ Добавьте CHANNEL_ID в Railway.'); return; }
+
+    const args = text.slice(12).split('|').map(s => s.trim());
+    if (args.length < 2) {
+      await sendMessage(chatId,
+        '❗ Формат: <code>/newproduct Название товара | Цена | Категория</code>\\n\\n' +
+        'Пример:\\n<code>/newproduct CS2 Prime аккаунт | $15 | Аккаунты</code>'
+      );
+      return;
+    }
+    const [title, price, category] = args;
+    const siteUrl = process.env.FRONTEND_URL || process.env.BACKEND_URL || '';
+
+    const postText =
+      '🆕 <b>Новый товар!</b>\\n\\n' +
+      '🎮 <b>' + title + '</b>\\n' +
+      '💰 Цена: <b>' + price + '</b>\\n' +
+      (category ? '📂 Категория: ' + category + '\\n' : '') +
+      '\\n' +
+      (siteUrl ? '🛒 <a href="' + siteUrl + '">Посмотреть на маркетплейсе</a>' : 'Minions Market');
+
+    try {
+      const result = await sendChannelMessage(postText, { disable_web_page_preview: false });
+      if (result?.ok) {
+        const msgId = result.result.message_id;
+        lastChannelMessages.unshift({ id: msgId, text: title.slice(0, 50), time: Date.now() });
+        if (lastChannelMessages.length > 20) lastChannelMessages.pop();
+        await sendMessage(chatId, '✅ <b>Анонс товара опубликован!</b>\\nID: <code>' + msgId + '</code>');
+      } else {
+        await sendMessage(chatId, '❌ Ошибка: ' + (result?.description || 'неизвестная ошибка'));
+      }
+    } catch(e) { await sendMessage(chatId, '❌ Ошибка: ' + e.message); }
+    return;
+  }
+
+  // ── /autopromo — AI-анонс топ-товара ─────────────────────────────────────
+  if (text === '/autopromo') {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    const channelId = getChannelId();
+    if (!channelId) { await sendMessage(chatId, '⚠️ Добавьте CHANNEL_ID в Railway.'); return; }
+
+    try {
+      await sendMessage(chatId, '🤖 <b>Генерирую промо-пост через AI...</b>');
+
+      const topProducts = await queryAll(
+        "SELECT p.title, p.price, p.category, p.description, u.username, p.views " +
+        "FROM products p JOIN users u ON u.id=p.seller_id " +
+        "WHERE p.status='active' ORDER BY p.views DESC LIMIT 5"
+      ).catch(() => []);
+
+      if (topProducts.length === 0) {
+        await sendMessage(chatId, '❌ Нет активных товаров для продвижения.');
+        return;
+      }
+
+      const productList = topProducts.map((p, i) =>
+        (i+1) + '. ' + p.title + ' ($' + p.price + ', ' + (p.category||'—') + ', 👁' + (p.views||0) + ')'
+      ).join('\\n');
+
+      const siteUrl = process.env.FRONTEND_URL || process.env.BACKEND_URL || '';
+
+      const aiPost = await askGrok(
+        'Ты маркетолог игрового маркетплейса Minions Market. Напиши продающий пост для Telegram-канала на русском языке. ' +
+        'Выбери ОДИН самый привлекательный товар из списка. ' +
+        'Формат: эмодзи, название, краткое описание преимуществ (1-2 предложения), призыв к действию. ' +
+        'Максимум 5 строк. Используй HTML теги <b> для выделения. Не используй Markdown. ' +
+        (siteUrl ? 'В конце добавь: 🛒 <a href="' + siteUrl + '">Перейти на маркетплейс</a>' : ''),
+        'Товары:\\n' + productList
+      );
+
+      const result = await sendChannelMessage(aiPost, { disable_web_page_preview: false });
+      if (result?.ok) {
+        const msgId = result.result.message_id;
+        lastChannelMessages.unshift({ id: msgId, text: 'AI autopromo', time: Date.now() });
+        if (lastChannelMessages.length > 20) lastChannelMessages.pop();
+        await sendMessage(chatId,
+          '✅ <b>AI-промо опубликовано!</b>\\n\\n' +
+          '<i>Текст поста:</i>\\n' + aiPost.slice(0, 200) + (aiPost.length > 200 ? '...' : '') + '\\n\\n' +
+          'ID: <code>' + msgId + '</code>'
+        );
+      } else {
+        await sendMessage(chatId, '❌ Ошибка публикации: ' + (result?.description || 'неизвестная ошибка'));
+      }
+    } catch(e) { await sendMessage(chatId, '❌ Ошибка: ' + e.message); }
+    return;
+  }
+
+  // ── /lastposts — список последних постов сессии ───────────────────────────
+  if (text === '/lastposts') {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    if (lastChannelMessages.length === 0) {
+      await sendMessage(chatId, 'ℹ️ Нет опубликованных постов в этой сессии.\\n\\nПосты из прошлых сессий недоступны — Telegram API не даёт историю канала.');
+      return;
+    }
+    let msg = '📋 <b>Последние посты (текущая сессия):</b>\\n\\n';
+    lastChannelMessages.slice(0, 10).forEach((p, i) => {
+      const time = new Date(p.time).toLocaleTimeString('ru');
+      msg += (i+1) + '. [' + time + '] ID: <code>' + p.id + '</code>\\n   ' + p.text + '\\n';
+    });
+    msg += '\\nУдалить: <code>/delpost [ID]</code>';
+    await sendMessage(chatId, msg);
+    return;
+  }
+
+  // ── /delpost [ID] — удалить сообщение из канала ──────────────────────────
+  if (text.startsWith('/delpost')) {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    const channelId = getChannelId();
+    if (!channelId) { await sendMessage(chatId, '⚠️ Добавьте CHANNEL_ID в Railway.'); return; }
+
+    const msgId = parseInt(text.split(/\s+/)[1]);
+    if (!msgId) {
+      await sendMessage(chatId, '❗ Укажите ID сообщения.\\nПример: <code>/delpost 123</code>\\n\\n/lastposts — список последних постов');
+      return;
+    }
+    try {
+      const result = await deleteChannelMessage(msgId);
+      if (result?.ok) {
+        const idx = lastChannelMessages.findIndex(m => m.id === msgId);
+        if (idx !== -1) lastChannelMessages.splice(idx, 1);
+        await sendMessage(chatId, '🗑 Сообщение <code>' + msgId + '</code> удалено из канала.');
+      } else {
+        await sendMessage(chatId, '❌ Не удалось удалить: ' + (result?.description || 'сообщение не найдено или устарело'));
+      }
+    } catch(e) { await sendMessage(chatId, '❌ Ошибка: ' + e.message); }
+    return;
+  }
+
+  // ── /unpin — открепить сообщение из канала ────────────────────────────────
+  if (text.startsWith('/unpin')) {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    const channelId = getChannelId();
+    if (!channelId) { await sendMessage(chatId, '⚠️ Добавьте CHANNEL_ID в Railway.'); return; }
+
+    const msgId = parseInt(text.split(/\s+/)[1]) || undefined;
+    try {
+      const result = await unpinChannelMessage(msgId);
+      if (result?.ok) {
+        await sendMessage(chatId, '📌 ' + (msgId ? 'Сообщение <code>' + msgId + '</code> откреплено.' : 'Последнее закреплённое сообщение откреплено.'));
+      } else {
+        await sendMessage(chatId, '❌ Ошибка: ' + (result?.description || 'неизвестная ошибка'));
+      }
+    } catch(e) { await sendMessage(chatId, '❌ Ошибка: ' + e.message); }
+    return;
+  }
 
   // ── /partner ──────────────────────────────────────────────────────────────
   if (text === '/partner') {
