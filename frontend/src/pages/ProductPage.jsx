@@ -11,7 +11,9 @@ export default function ProductPage() {
   const { user } = useStore()
   const [product, setProduct] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [buying, setBuying]   = useState(false)
+  const [buying, setBuying]       = useState(false)
+  const [favorited, setFavorited] = useState(false)
+  const [favLoading, setFavLoading] = useState(false)
 
   useMeta(product ? {
     title: product.title,
@@ -21,8 +23,31 @@ export default function ProductPage() {
   const [imgIdx, setImgIdx]   = useState(0)
 
   useEffect(() => {
-    api.get(`/products/${id}`).then(r => setProduct(r.data)).catch(() => navigate('/catalog')).finally(() => setLoading(false))
+    api.get(`/products/${id}`).then(r => {
+      setProduct(r.data)
+      if (r.data.isFavorited !== undefined) setFavorited(!!r.data.isFavorited)
+    }).catch(() => navigate('/catalog')).finally(() => setLoading(false))
   }, [id])
+
+  useEffect(() => {
+    if (!user || !id) return
+    api.get('/users/me/favorites').then(r => {
+      const ids = (r.data.products || []).map(p => p.id || p._id)
+      setFavorited(ids.includes(id))
+    }).catch(() => {})
+  }, [user, id])
+
+  const toggleFavorite = async () => {
+    if (!user) return navigate('/auth')
+    setFavLoading(true)
+    try {
+      const r = await api.post(`/products/${product._id || product.id}/favorite`)
+      setFavorited(r.data.favorited)
+      setProduct(p => ({ ...p, favorites: (p.favorites || 0) + (r.data.favorited ? 1 : -1) }))
+      toast.success(r.data.favorited ? '❤️ Добавлено в избранное' : 'Удалено из избранного')
+    } catch { toast.error('Ошибка') }
+    setFavLoading(false)
+  }
 
   const buy = async () => {
     if (!user) return navigate('/auth')
@@ -113,11 +138,53 @@ export default function ProductPage() {
 
           {!isMine && product.status==='active' && (
             <div style={{ marginBottom:16 }}>
-              <button className="btn btn-primary btn-full" onClick={buy} disabled={buying} style={{ padding:'16px', fontSize:16, marginBottom:10 }}>
-                {buying ? 'Создание сделки...' : `Купить за $${product.price}`}
-              </button>
+              <div style={{ display:'flex', gap:10, marginBottom:10 }}>
+                <button className="btn btn-primary" onClick={buy} disabled={buying} style={{ flex:1, padding:'16px', fontSize:16 }}>
+                  {buying ? 'Создание сделки...' : `Купить за $${product.price}`}
+                </button>
+                <button
+                  onClick={toggleFavorite}
+                  disabled={favLoading}
+                  title={favorited ? 'Убрать из избранного' : 'В избранное'}
+                  style={{
+                    width:54, height:54, borderRadius:14, border:'1px solid',
+                    borderColor: favorited ? 'rgba(231,76,60,0.5)' : 'var(--border)',
+                    background: favorited ? 'rgba(231,76,60,0.1)' : 'var(--bg3)',
+                    cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+                    transition:'all 0.2s', flexShrink:0,
+                  }}
+                >
+                  <Heart
+                    size={22}
+                    strokeWidth={favorited ? 0 : 1.75}
+                    style={{ fill: favorited ? '#e74c3c' : 'none', color: favorited ? '#e74c3c' : 'var(--t3)', transition:'all 0.2s' }}
+                  />
+                </button>
+              </div>
               <div style={{ fontSize:12, color:'var(--t3)', textAlign:'center', lineHeight:1.6 }}>
                 Средства заморожены до подтверждения. Если товар не соответствует — откройте спор.
+              </div>
+            </div>
+          )}
+          {!isMine && product.status!=='active' && (
+            <div style={{ marginBottom:16 }}>
+              <div style={{ display:'flex', gap:10, marginBottom:10 }}>
+                <div className="badge badge-red" style={{ marginBottom:0 }}>Товар недоступен</div>
+                <button
+                  onClick={toggleFavorite}
+                  disabled={favLoading}
+                  title={favorited ? 'Убрать из избранного' : 'Следить за товаром'}
+                  style={{
+                    padding:'8px 16px', borderRadius:14, border:'1px solid',
+                    borderColor: favorited ? 'rgba(231,76,60,0.5)' : 'var(--border)',
+                    background: favorited ? 'rgba(231,76,60,0.1)' : 'var(--bg3)',
+                    cursor:'pointer', display:'flex', alignItems:'center', gap:6,
+                    fontSize:13, color: favorited ? '#e74c3c' : 'var(--t3)',
+                  }}
+                >
+                  <Heart size={14} strokeWidth={favorited ? 0 : 1.75} style={{ fill: favorited ? '#e74c3c' : 'none' }}/>
+                  {favorited ? 'В избранном' : 'В избранное'}
+                </button>
               </div>
             </div>
           )}
@@ -131,7 +198,6 @@ export default function ProductPage() {
             </Link>
           )}
           {isMine && <div className="badge badge-yellow" style={{ marginBottom:16 }}>Ваш товар</div>}
-          {product.status!=='active' && !isMine && <div className="badge badge-red" style={{ marginBottom:16 }}>Товар недоступен</div>}
 
           <div style={{ display:'flex', gap:16, color:'var(--t4)', fontSize:12 }}>
             <span><Eye size={13} strokeWidth={1.75} style={{marginRight:4}}/>{product.views||0} просмотров</span>
@@ -154,5 +220,4 @@ export default function ProductPage() {
       )}
     </div>
   )
-      }
-
+}
