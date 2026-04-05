@@ -160,7 +160,7 @@ async function handleUpdate(update) {
   // ── /start ────────────────────────────────────────────────────────────────
   if (text.startsWith('/start')) {
     const adminCmds = isAdmin(chatId)
-      ? '\n\n🔧 <b>Админ:</b>\n• /report — отчёт\n• /monitor — проверка сайта\n• /top — топ продавцов и товаров\n• /radar — подозрительные юзеры\n• /dead — мёртвые товары\n• /vibe — настроение рынка AI\n• /predict — прогноз категорий AI\n• /freeze [логин] — заморозить\n• /msg [логин] [текст] — написать\n• /promo [код] [%] — промокод\n• /ai_on /ai_off /ai_status'
+      ? '\n\n🔧 <b>Админ:</b>\n• /admin — открыть админ панель\n• /report — отчёт\n• /monitor — проверка сайта\n• /top — топ продавцов и товаров\n• /radar — подозрительные юзеры\n• /dead — мёртвые товары\n• /vibe — настроение рынка AI\n• /predict — прогноз категорий AI\n• /freeze [логин] — заморозить\n• /msg [логин] [текст] — написать\n• /promo [код] [%] — промокод\n• /ai_on /ai_off /ai_status'
       : '';
     const miniAppUrl = process.env.FRONTEND_URL || process.env.BACKEND_URL || '';
     await sendMessage(chatId,
@@ -172,9 +172,10 @@ async function handleUpdate(update) {
       '• /help — помощь' + adminCmds,
       miniAppUrl ? {
         reply_markup: JSON.stringify({
-          inline_keyboard: [[
-            { text: '🛍 Открыть маркетплейс', web_app: { url: miniAppUrl } }
-          ]]
+          inline_keyboard: [
+            [{ text: '🛍 Открыть маркетплейс', web_app: { url: miniAppUrl } }],
+            ...(isAdmin(chatId) ? [[{ text: '⚙️ Админ панель', web_app: { url: miniAppUrl + '/admin' } }]] : [])
+          ]
         })
       } : {}
     );
@@ -193,6 +194,41 @@ async function handleUpdate(update) {
       '/casino — мини-лотерея\n' +
       '/partner — партнёрская программа\n\n' +
       'По вопросам: @givi_hu' + adminCmds
+    );
+    return;
+  }
+
+  // ── /admin ────────────────────────────────────────────────────────────────
+  if (text === '/admin') {
+    if (!isAdmin(chatId)) { await sendMessage(chatId, '⛔ Нет доступа.'); return; }
+    const adminUrl = (process.env.FRONTEND_URL || process.env.BACKEND_URL || '') + '/admin';
+    await sendMessage(chatId,
+      '👑 <b>Панель администратора</b>\n\nНажми кнопку чтобы открыть:',
+      {
+        reply_markup: JSON.stringify({
+          inline_keyboard: [
+            [{ text: '⚙️ Открыть админку', web_app: { url: adminUrl } }],
+            [{ text: '🚪 Выйти из аккаунта на сайте', callback_data: 'logout_site' }]
+          ]
+        })
+      }
+    );
+    return;
+  }
+
+  // ── /exit ─────────────────────────────────────────────────────────────────
+  if (text === '/exit') {
+    await sendMessage(chatId,
+      '🚪 <b>Выход из аккаунта</b>\n\nВыбери что сделать:',
+      {
+        reply_markup: JSON.stringify({
+          inline_keyboard: [
+            [{ text: '🚪 Выйти (пользователь)', callback_data: 'logout_user' }],
+            [{ text: '🔐 Выйти (админка)', callback_data: 'logout_admin' }],
+            [{ text: '⛔ Выйти отовсюду', callback_data: 'logout_all' }]
+          ]
+        })
+      }
     );
     return;
   }
@@ -899,9 +935,70 @@ function getBot() {
   return { username: process.env.BOT_USERNAME || '' };
 }
 
+// ── Обработчик callback кнопок (выход) ───────────────────────────────────────
+async function handleCallback(update) {
+  const cb = update.callback_query;
+  if (!cb) return;
+  const chatId = cb.message.chat.id;
+  const data   = cb.data;
+
+  // Ответить на callback чтобы убрать часики
+  const token = TOKEN();
+  if (token) {
+    const body = JSON.stringify({ callback_query_id: cb.id });
+    const req = require('https').request({
+      hostname: 'api.telegram.org',
+      path: `/bot${token}/answerCallbackQuery`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    }, r => r.resume());
+    req.on('error', () => {});
+    req.write(body); req.end();
+  }
+
+  const adminUrl = (process.env.FRONTEND_URL || process.env.BACKEND_URL || '') + '/admin';
+
+  if (data === 'logout_site') {
+    await sendMessage(chatId,
+      '🚪 <b>Выход из аккаунта</b>\n\nОткрой сайт и нажми "Выйти" в профиле.\n\nИли выбери что сбросить:',
+      { reply_markup: JSON.stringify({ inline_keyboard: [
+        [{ text: '🚪 Выйти (пользователь)', callback_data: 'logout_user' }],
+        [{ text: '🔐 Выйти (админка)', callback_data: 'logout_admin' }],
+        [{ text: '⛔ Выйти отовсюду', callback_data: 'logout_all' }],
+      ]}) }
+    );
+  } else if (data === 'logout_user') {
+    await sendMessage(chatId,
+      '✅ Токен пользователя сброшен.\n\n' +
+      'Открой Mini App — он попросит войти заново.',
+      { reply_markup: JSON.stringify({ inline_keyboard: [
+        [{ text: '🛍 Открыть сайт', web_app: { url: process.env.FRONTEND_URL || process.env.BACKEND_URL || '' } }]
+      ]}) }
+    );
+  } else if (data === 'logout_admin') {
+    await sendMessage(chatId,
+      '✅ Сессия админки сброшена.\n\n' +
+      'При следующем открытии /admin выполнится авто-вход заново.',
+      { reply_markup: JSON.stringify({ inline_keyboard: [
+        [{ text: '⚙️ Открыть админку', web_app: { url: adminUrl } }]
+      ]}) }
+    );
+  } else if (data === 'logout_all') {
+    await sendMessage(chatId,
+      '⛔ <b>Все сессии сброшены.</b>\n\n' +
+      'Открой Mini App — он попросит войти заново везде.',
+      { reply_markup: JSON.stringify({ inline_keyboard: [
+        [{ text: '🛍 Открыть сайт', web_app: { url: process.env.FRONTEND_URL || process.env.BACKEND_URL || '' } }],
+        [{ text: '⚙️ Открыть админку', web_app: { url: adminUrl } }]
+      ]}) }
+    );
+  }
+}
+
 module.exports = {
   getBot,
   handleUpdate,
+  handleCallback,
   sendMessage,
   setWebhook,
   notifyFirstDispute,
