@@ -25,6 +25,7 @@ function sanitizeUser(u) {
   safe.photoUrl       = safe.photo_url;
   safe.firstName      = safe.first_name;
   safe.lastName       = safe.last_name;
+  safe.telegramId     = safe.telegram_id;
   safe.reviewCount    = safe.review_count || 0;
   safe.totalDeposited = parseFloat(safe.total_deposited) || 0;
   safe.totalWithdrawn = parseFloat(safe.total_withdrawn) || 0;
