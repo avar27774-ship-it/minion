@@ -147,7 +147,7 @@ export default function DealsPage() {
       background:'var(--bg2)', border: isMobile ? 'none' : '1px solid var(--border)',
       borderRadius: isMobile ? 0 : 20,
       display:'flex', flexDirection:'column',
-      height: isMobile ? 'calc(100dvh - 60px)' : 'calc(100vh - 180px)',
+      height: isMobile ? 'calc(var(--app-height) - 60px)' : 'calc(var(--app-height) - 180px)',
       minHeight: isMobile ? 'unset' : 500,
       overflow:'hidden'
     }}>
@@ -319,7 +319,7 @@ export default function DealsPage() {
   )
 
   return (
-    <div style={{ position:'relative', minHeight:'100vh', overflow:'hidden' }}>
+    <div style={{ position:'relative', minHeight:'var(--app-height)', overflow:'hidden' }}>
       {/* Particles фон */}
       <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
         <Particles
