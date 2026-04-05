@@ -173,16 +173,20 @@ app.use('/api/messages',   require('./routes/messages'));
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ── Telegram bot (webhook mode) ───────────────────────────────────────────────
-const { getBot, handleUpdate } = require('./utils/bot');
+const { getBot, handleUpdate, handleCallback } = require('./utils/bot');
 
 app.post('/api/tg-webhook/:token', (req, res) => {
   res.sendStatus(200);
   if (req.params.token !== process.env.TELEGRAM_BOT_TOKEN) return;
-  handleUpdate(req.body).catch(e => {
-    // ECONNRESET — Telegram закрыл соединение, не критично
-    if (e.code === 'ECONNRESET' || e.message?.includes('ECONNRESET')) return;
-    console.error('[Webhook] error:', e.message);
-  });
+  const update = req.body;
+  if (update.callback_query) {
+    handleCallback(update).catch(e => console.error('[Webhook:callback]', e.message));
+  } else {
+    handleUpdate(update).catch(e => {
+      if (e.code === 'ECONNRESET' || e.message?.includes('ECONNRESET')) return;
+      console.error('[Webhook] error:', e.message);
+    });
+  }
 });
 
 // Инициализация Telegram бота
