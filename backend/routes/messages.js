@@ -100,6 +100,16 @@ router.post('/:userId', auth, async (req, res) => {
       ).catch(() => {});
     }
 
+    // Логируем сообщение в chat_logs
+    logChatMessage(
+      req.userId, receiverId,
+      sender?.username, receiver?.username,
+      msgId, text, image || null, 'direct', null
+    ).catch(() => {});
+
+    // Логируем событие
+    log(EVENTS.MESSAGE_SEND, req, { userId: req.userId, username: sender?.username, details: { to: receiver.username, len: (text||'').length } });
+
     res.status(201).json({ message: msg });
   } catch (e) {
     console.error(e);
