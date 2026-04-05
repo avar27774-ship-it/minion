@@ -27,39 +27,39 @@ function setEnabled(v)  { AI_ENABLED = v; }
 // ─────────────────────────────────────────────────────────────────────────────
 
 function askClaude(systemPrompt, userPrompt, maxTokens = 500) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return Promise.reject(new Error('ANTHROPIC_API_KEY не задан'));
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return Promise.reject(new Error('GROQ_API_KEY не задан'));
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'llama3-70b-8192',
       max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: userPrompt },
+      ],
     });
     const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
+      hostname: 'api.groq.com',
+      path: '/openai/v1/chat/completions',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Length': Buffer.byteLength(body),
       },
     }, (r) => {
       let data = '';
       r.on('data', d => data += d);
       r.on('end', () => {
-        try { resolve(JSON.parse(data)?.content?.[0]?.text || ''); }
+        try { resolve(JSON.parse(data)?.choices?.[0]?.message?.content || ''); }
         catch (e) { reject(e); }
       });
     });
     req.on('error', (e) => {
-      console.warn('[AI] Claude connection error:', e.code || e.message, '— retrying...');
-      // Небольшая задержка и повтор через reject (caller должен повторить)
+      console.warn('[AI] Groq connection error:', e.code || e.message, '— retrying...');
       reject(e);
     });
-    req.setTimeout(45000, () => { req.destroy(); reject(new Error('Claude timeout')); });
+    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Groq timeout')); });
     req.write(body);
     req.end();
   });
@@ -714,8 +714,8 @@ async function migrate() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function init() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.warn('[AI Admin] ANTHROPIC_API_KEY не задан — AI Admin отключён');
+  if (!process.env.GROQ_API_KEY) {
+    console.warn('[AI Admin] GROQ_API_KEY не задан — AI Admin отключён');
     return;
   }
   await migrate();
@@ -730,9 +730,9 @@ async function init() {
   cron.schedule('0 10 * * *',   () => reactivateUsers().catch(e => console.error('[AI:REACTIVATE]', e.message)));
   cron.schedule('0 9 * * 1',    () => weeklyForecast().catch(e => console.error('[AI:FORECAST]', e.message)));
 
-  console.log('[AI Admin] ULTRA запущен');
+  console.log('[AI Admin] ULTRA запущен (Groq llama3-70b-8192)');
   await tg(process.env.REPORT_CHAT_ID,
-    `🤖 <b>AI Admin ULTRA запущен</b>\n\n` +
+    `🤖 <b>AI Admin ULTRA запущен</b> (Groq)\n\n` +
     `✅ Модерация товаров — каждые 10 мин\n` +
     `✅ Разрешение споров — каждые 5 мин\n` +
     `✅ Мониторинг безопасности — каждые 15 мин\n` +
