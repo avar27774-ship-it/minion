@@ -79,20 +79,30 @@ router.post('/deposit/cryptopay', auth, async (req, res) => {
 // ── POST /wallet/webhook/rukassa ──────────────────────────────────────────────
 router.post('/webhook/rukassa', async (req, res) => {
   try {
+    console.log('[RuKassa] webhook body:', JSON.stringify(req.body));
+
     if (!rukassa.verifyWebhook(req.body)) {
-      console.warn('Invalid RuKassa webhook signature');
+      console.warn('[RuKassa] Invalid webhook signature');
       return res.status(400).send('Invalid signature');
     }
-    const { order_id, status } = req.body;
+
+    const { status } = req.body;
     if (status !== 'success') return res.send('ok');
 
-    const tx = await queryOne('SELECT * FROM transactions WHERE gateway_order_id = $1', [order_id]);
+    // RuKassa передаёт наш orderId в поле data
+    const orderId = req.body.data || req.body.order_id;
+    if (!orderId) { console.warn('[RuKassa] no orderId in webhook'); return res.send('ok'); }
+
+    const tx = await queryOne(
+      'SELECT * FROM transactions WHERE gateway_order_id = $1',
+      [String(orderId)]
+    );
     if (!tx || tx.status === 'completed') return res.send('ok');
 
     await creditUser(tx);
     res.send('ok');
   } catch (e) {
-    console.error('Rukassa webhook error:', e);
+    console.error('[RuKassa] webhook error:', e);
     res.status(500).send('error');
   }
 });
@@ -303,14 +313,10 @@ router.post('/webhook/nowpayments', async (req, res) => {
 
 // ── Internal: creditUser ───────────────────────────────────────────────────────
 async function creditUser(tx) {
-  // Сохраняем данные для уведомлений — они должны быть ПОСЛЕ транзакции
-  let userSnapshot = null;
-  let newBal = 0;
-
   await transaction(async (client) => {
     const userRes = await client.query('SELECT * FROM users WHERE id = $1', [tx.user_id]);
     const user    = userRes.rows[0];
-    newBal        = parseFloat(user.balance) + parseFloat(tx.amount);
+    const newBal  = parseFloat(user.balance) + parseFloat(tx.amount);
 
     await client.query(
       `UPDATE users SET balance = $1, total_deposited = total_deposited + $2 WHERE id = $3`,
@@ -320,22 +326,15 @@ async function creditUser(tx) {
       `UPDATE transactions SET status = 'completed', balance_before = $1, balance_after = $2 WHERE id = $3`,
       [user.balance, newBal, tx.id]
     );
-
-    // Сохраняем снапшот — НЕ вызываем notify/broadcast внутри транзакции
-    userSnapshot = { ...user, balance: newBal };
-  });
-
-  // Уведомления и WS — строго ПОСЛЕ закрытия транзакции
-  if (userSnapshot) {
-    notify.notifyDeposit(userSnapshot, tx.amount, tx.gateway_type, tx.gateway_type).catch(() => {});
+    notify.notifyDeposit({ ...user, balance: newBal }, tx.amount, tx.gateway_type, tx.gateway_type).catch(() => {});
     broadcast('deposit_completed', {
-      userId:     tx.user_id,
-      username:   userSnapshot.username,
-      amount:     parseFloat(tx.amount),
-      gateway:    tx.gateway_type,
+      userId: tx.user_id,
+      username: user.username,
+      amount: parseFloat(tx.amount),
+      gateway: tx.gateway_type,
       newBalance: newBal,
     });
-  }
+  });
 }
 
 module.exports = router;
