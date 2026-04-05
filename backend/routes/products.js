@@ -117,7 +117,67 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// ── POST /products ────────────────────────────────────────────────────────────
+// ── GET /products/:id/similar ─────────────────────────────────────────────────
+router.get('/:id/similar', async (req, res) => {
+  try {
+    const product = await queryOne('SELECT category, price, game FROM products WHERE id = $1', [req.params.id]);
+    if (!product) return res.status(404).json({ error: 'Товар не найден' });
+
+    const { category, price, game } = product;
+    const minP = parseFloat(price) * 0.3;
+    const maxP = parseFloat(price) * 3.0;
+
+    // Сначала ищем по категории + игре (если есть), потом просто по категории
+    let similar = [];
+
+    if (game) {
+      similar = await queryAll(
+        `${PRODUCT_SELECT}
+         WHERE p.status = 'active' AND p.id != $1
+           AND p.category = $2 AND p.game = $3
+           AND p.price BETWEEN $4 AND $5
+         ORDER BY p.views DESC LIMIT 4`,
+        [req.params.id, category, game, minP, maxP]
+      );
+    }
+
+    // Если по игре меньше 4 — добиваем по категории
+    if (similar.length < 4) {
+      const exclude = [req.params.id, ...similar.map(s => s.id)];
+      const placeholders = exclude.map((_, i) => `$${i + 1}`).join(',');
+      const extra = await queryAll(
+        `${PRODUCT_SELECT}
+         WHERE p.status = 'active'
+           AND p.id NOT IN (${placeholders})
+           AND p.category = $${exclude.length + 1}
+           AND p.price BETWEEN $${exclude.length + 2} AND $${exclude.length + 3}
+         ORDER BY p.views DESC LIMIT $${exclude.length + 4}`,
+        [...exclude, category, minP, maxP, 4 - similar.length]
+      );
+      similar = [...similar, ...extra];
+    }
+
+    // Если всё ещё мало — любые популярные товары
+    if (similar.length < 4) {
+      const exclude = [req.params.id, ...similar.map(s => s.id)];
+      const placeholders = exclude.map((_, i) => `$${i + 1}`).join(',');
+      const extra = await queryAll(
+        `${PRODUCT_SELECT}
+         WHERE p.status = 'active'
+           AND p.id NOT IN (${placeholders})
+         ORDER BY p.views DESC LIMIT $${exclude.length + 1}`,
+        [...exclude, 4 - similar.length]
+      );
+      similar = [...similar, ...extra];
+    }
+
+    res.json({ products: similar.map(p => { delete p.delivery_data; return parseProduct(p); }) });
+  } catch (e) {
+    console.error('GET /products/:id/similar error:', e);
+    res.status(500).json({ error: 'Ошибка' });
+  }
+});
+
 router.post('/', auth, async (req, res) => {
   try {
     const { title, description, price, category, subcategory, game, server, deliveryData, deliveryType, tags } = req.body;
