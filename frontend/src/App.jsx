@@ -45,6 +45,41 @@ function Loader() {
   )
 }
 
+// ── TG Viewport: синхронизируем --app-height с реальным viewport ──────────────
+function useTelegramViewport() {
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp
+
+    const setHeight = (h) => {
+      document.documentElement.style.setProperty('--app-height', `${h}px`)
+    }
+
+    if (tg) {
+      // Используем стабильную высоту (не прыгает при появлении клавиатуры)
+      const apply = () => {
+        const h = tg.viewportStableHeight || tg.viewportHeight || window.innerHeight
+        setHeight(h)
+      }
+      apply()
+      tg.onEvent('viewportChanged', apply)
+      return () => tg.offEvent('viewportChanged', apply)
+    } else {
+      // Браузер — используем visualViewport если доступен
+      const apply = () => {
+        const h = window.visualViewport?.height || window.innerHeight
+        setHeight(h)
+      }
+      apply()
+      window.visualViewport?.addEventListener('resize', apply)
+      window.addEventListener('resize', apply)
+      return () => {
+        window.visualViewport?.removeEventListener('resize', apply)
+        window.removeEventListener('resize', apply)
+      }
+    }
+  }, [])
+}
+
 // Telegram Mini App авто-логин
 function TelegramWebAppAuth({ children }) {
   const { user, setUser } = useStore()
@@ -96,6 +131,7 @@ const InnerRoutes = () => (
 )
 
 export default function App() {
+  useTelegramViewport()
   return (
     <BrowserRouter>
       <OfflineBanner/>
