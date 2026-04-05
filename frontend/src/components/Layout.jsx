@@ -28,6 +28,7 @@ export default function Layout({ children }) {
   const [scrolled,   setScrolled]   = useState(false)
   const [notifOpen,  setNotifOpen]  = useState(false)
   const [notifs,     setNotifs]     = useState([])
+  const [isMobile,   setIsMobile]   = useState(window.innerWidth <= 768)
   const [unread,     setUnread]     = useState(0)
 
   const loadNotifs = useCallback(async () => {
@@ -71,12 +72,15 @@ export default function Layout({ children }) {
     }
     const onScroll = () => setScrolled(window.scrollY > 20)
     window.addEventListener('scroll', onScroll)
+    const onResize = () => setIsMobile(window.innerWidth <= 768)
+    window.addEventListener('resize', onResize)
 
     // Обновляем баланс каждые 30 секунд
     const interval = setInterval(() => { refreshUser() }, 30000)
 
     return () => {
       window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onResize)
       clearInterval(interval)
     }
   }, [])
@@ -144,7 +148,7 @@ export default function Layout({ children }) {
           </nav>
 
           {/* Desktop right actions */}
-          <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }} className="desktop-actions">
+          <div style={{ display: isMobile ? 'none' : 'flex', alignItems:'center', gap:8, flexShrink:0 }} className="desktop-actions">
             {user ? (
               <>
                 <Link to="/sell" className="btn btn-sm btn-secondary">+ Продать</Link>
@@ -359,7 +363,7 @@ export default function Layout({ children }) {
           </div>
 
           {/* Mobile: balance + burger */}
-          <div style={{ display:'none', alignItems:'center', gap:10, marginLeft:'auto' }} className="mobile-header-right">
+          <div style={{ display: isMobile ? 'flex' : 'none', alignItems:'center', gap:10, marginLeft:'auto' }} className="mobile-header-right">
             {user && (
               <div style={{
                 display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
