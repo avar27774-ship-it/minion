@@ -10,6 +10,7 @@ const STATUS_LABELS = { pending:'Ожидание', active:'Активна', com
 const STATUS_COLORS = { pending:'var(--accent)', active:'var(--green)', completed:'var(--t3)', disputed:'var(--red)', cancelled:'var(--t4)', refunded:'#22d3ee' }
 
 function DealListItem({ d, isSelected, isBuyer, onClick }) {
+
   return (
     <div onClick={onClick} style={{
       background: isSelected ? 'var(--bg3)' : 'var(--bg2)',
@@ -145,8 +146,137 @@ export default function DealsPage() {
 
   if (!user) return null
 
-  // ── Панель деталей ─────────────────────────────────────────────────────────
-  const DetailPanel = () => (
+  return (
+    <div style={{ position:'relative', minHeight:'var(--app-height)', overflow:'hidden' }}>
+      {reviewDeal && (
+        <ReviewPopup
+          deal={reviewDeal}
+          onClose={() => setReviewDeal(null)}
+          onSubmitted={() => {
+            setDeals(prev => prev.map(d =>
+              (d.id||d._id) === (reviewDeal.id||reviewDeal._id)
+                ? { ...d, hasReview: true }
+                : d
+            ))
+            if (selected && (selected.id||selected._id) === (reviewDeal.id||reviewDeal._id)) {
+              setSelected(s => ({ ...s, hasReview: true }))
+            }
+          }}
+        />
+      )}
+      <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
+        <Particles
+          particleColors={['#ffffff']}
+          particleCount={200}
+          particleSpread={10}
+          speed={0.1}
+          particleBaseSize={100}
+          moveParticlesOnHover={false}
+          alphaParticles={false}
+          disableRotation={false}
+          pixelRatio={1}
+        />
+      </div>
+
+      <div style={{ position:'relative', zIndex:1, maxWidth:1100, margin:'0 auto', padding: isMobile ? '16px 12px' : '32px 20px' }}>
+
+      {!(isMobile && selected) && (
+        <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize: isMobile ? 22 : 28, marginBottom: isMobile ? 16 : 24 }}>
+          Мои сделки
+        </h1>
+      )}
+
+      {isMobile ? (
+        showList ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            <div style={{ display:'flex', gap:6 }}>
+              {[['all','Все'],['buyer','Покупки'],['seller','Продажи']].map(([v,l]) => (
+                <button key={v} onClick={() => setRole(v)} style={{
+                  flex:1, padding:'9px', borderRadius:8, border:'1px solid', cursor:'pointer',
+                  fontSize:13, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
+                  background: role===v ? 'rgba(245,200,66,0.1)' : 'transparent',
+                  borderColor: role===v ? 'rgba(245,200,66,0.4)' : 'var(--border)',
+                  color: role===v ? 'var(--accent)' : 'var(--t3)'
+                }}>{l}</button>
+              ))}
+            </div>
+            {loading ? (
+              [0,1,2,3].map(i => <div key={i} className="skel" style={{ height:80, borderRadius:14 }}/>)
+            ) : deals.length===0 ? (
+              <div style={{ textAlign:'center', padding:'60px 20px', color:'var(--t3)' }}>
+                <Package size={40} strokeWidth={0.75} style={{ opacity:0.25, marginBottom:12 }}/>
+                <div style={{ fontFamily:'var(--font-h)', fontWeight:700 }}>Сделок нет</div>
+              </div>
+            ) : deals.map(d => (
+              <DealListItem key={d._id||d.id} d={d}
+                isSelected={false} isBuyer={isBuyer(d)}
+                onClick={() => loadDeal(d._id||d.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <DetailPanel
+            selected={selected} isMobile={isMobile} uid={uid}
+            isBuyer={isBuyer} isSeller={isSeller}
+            delivery={delivery} setDelivery={setDelivery}
+            msgText={msgText} setMsgText={setMsgText}
+            working={working} messagesEndRef={messagesEndRef}
+            setSelected={setSelected}
+            deliver={deliver} confirm={confirm} dispute={dispute}
+            requestRefund={requestRefund} sendMessage={sendMessage}
+            setReviewDeal={setReviewDeal}
+          />
+        )
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'300px 1fr', gap:16, alignItems:'start' }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            <div style={{ display:'flex', gap:6 }}>
+              {[['all','Все'],['buyer','Покупки'],['seller','Продажи']].map(([v,l]) => (
+                <button key={v} onClick={() => setRole(v)} style={{
+                  flex:1, padding:'8px', borderRadius:8, border:'1px solid', cursor:'pointer',
+                  fontSize:12, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
+                  background: role===v ? 'rgba(245,200,66,0.1)' : 'transparent',
+                  borderColor: role===v ? 'rgba(245,200,66,0.4)' : 'var(--border)',
+                  color: role===v ? 'var(--accent)' : 'var(--t3)'
+                }}>{l}</button>
+              ))}
+            </div>
+            {loading ? (
+              [0,1,2,3].map(i => <div key={i} className="skel" style={{ height:80, borderRadius:14 }}/>)
+            ) : deals.length===0 ? (
+              <div style={{ textAlign:'center', padding:'24px 12px', color:'var(--t3)' }}>
+                <Package size={36} strokeWidth={0.75} style={{ opacity:0.25, marginBottom:10 }}/>
+                <div style={{ fontFamily:'var(--font-h)', fontWeight:700 }}>Сделок нет</div>
+              </div>
+            ) : deals.map(d => (
+              <DealListItem key={d._id||d.id} d={d}
+                isSelected={(selected?._id||selected?.id) === (d._id||d.id)}
+                isBuyer={isBuyer(d)}
+                onClick={() => loadDeal(d._id||d.id)}
+              />
+            ))}
+          </div>
+          <DetailPanel
+            selected={selected} isMobile={isMobile} uid={uid}
+            isBuyer={isBuyer} isSeller={isSeller}
+            delivery={delivery} setDelivery={setDelivery}
+            msgText={msgText} setMsgText={setMsgText}
+            working={working} messagesEndRef={messagesEndRef}
+            setSelected={setSelected}
+            deliver={deliver} confirm={confirm} dispute={dispute}
+            requestRefund={requestRefund} sendMessage={sendMessage}
+            setReviewDeal={setReviewDeal}
+          />
+        </div>
+      )}
+      </div>
+    </div>
+  )
+}
+
+// ── Панель деталей (вынесена НАРУЖУ из DealsPage — иначе ре-рендер пересоздаёт компонент и инпут теряет фокус) ──
+function DetailPanel({ selected, isMobile, uid, isBuyer, isSeller, delivery, setDelivery, msgText, setMsgText, working, messagesEndRef, setSelected, deliver, confirm, dispute, requestRefund, sendMessage, setReviewDeal }) {
+  return (
     <div style={{
       background:'var(--bg2)', border: isMobile ? 'none' : '1px solid var(--border)',
       borderRadius: isMobile ? 0 : 20,
@@ -340,119 +470,6 @@ export default function DealsPage() {
           </div>
         </>
       )}
-    </div>
-  )
-
-  return (
-    <div style={{ position:'relative', minHeight:'var(--app-height)', overflow:'hidden' }}>
-      {/* ReviewPopup */}
-      {reviewDeal && (
-        <ReviewPopup
-          deal={reviewDeal}
-          onClose={() => setReviewDeal(null)}
-          onSubmitted={() => {
-            setDeals(prev => prev.map(d =>
-              (d.id||d._id) === (reviewDeal.id||reviewDeal._id)
-                ? { ...d, hasReview: true }
-                : d
-            ))
-            if (selected && (selected.id||selected._id) === (reviewDeal.id||reviewDeal._id)) {
-              setSelected(s => ({ ...s, hasReview: true }))
-            }
-          }}
-        />
-      )}
-      {/* Particles фон */}
-      <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
-        <Particles
-          particleColors={['#ffffff']}
-          particleCount={200}
-          particleSpread={10}
-          speed={0.1}
-          particleBaseSize={100}
-          moveParticlesOnHover={false}
-          alphaParticles={false}
-          disableRotation={false}
-          pixelRatio={1}
-        />
-      </div>
-
-      {/* Контент поверх */}
-      <div style={{ position:'relative', zIndex:1, maxWidth:1100, margin:'0 auto', padding: isMobile ? '16px 12px' : '32px 20px' }}>
-
-      {/* Заголовок — скрываем на мобильном когда открыта сделка */}
-      {!(isMobile && selected) && (
-        <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize: isMobile ? 22 : 28, marginBottom: isMobile ? 16 : 24 }}>
-          Мои сделки
-        </h1>
-      )}
-
-      {isMobile ? (
-        // ── МОБИЛЬНЫЙ: список или детали ─────────────────────────────────────
-        showList ? (
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            <div style={{ display:'flex', gap:6 }}>
-              {[['all','Все'],['buyer','Покупки'],['seller','Продажи']].map(([v,l]) => (
-                <button key={v} onClick={() => setRole(v)} style={{
-                  flex:1, padding:'9px', borderRadius:8, border:'1px solid', cursor:'pointer',
-                  fontSize:13, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
-                  background: role===v ? 'rgba(245,200,66,0.1)' : 'transparent',
-                  borderColor: role===v ? 'rgba(245,200,66,0.4)' : 'var(--border)',
-                  color: role===v ? 'var(--accent)' : 'var(--t3)'
-                }}>{l}</button>
-              ))}
-            </div>
-            {loading ? (
-              [0,1,2,3].map(i => <div key={i} className="skel" style={{ height:80, borderRadius:14 }}/>)
-            ) : deals.length===0 ? (
-              <div style={{ textAlign:'center', padding:'60px 20px', color:'var(--t3)' }}>
-                <Package size={40} strokeWidth={0.75} style={{ opacity:0.25, marginBottom:12 }}/>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:700 }}>Сделок нет</div>
-              </div>
-            ) : deals.map(d => (
-              <DealListItem key={d._id||d.id} d={d}
-                isSelected={false} isBuyer={isBuyer(d)}
-                onClick={() => loadDeal(d._id||d.id)}
-              />
-            ))}
-          </div>
-        ) : (
-          <DetailPanel/>
-        )
-      ) : (
-        // ── ДЕСКТОП: список + детали рядом ───────────────────────────────────
-        <div style={{ display:'grid', gridTemplateColumns:'300px 1fr', gap:16, alignItems:'start' }}>
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            <div style={{ display:'flex', gap:6 }}>
-              {[['all','Все'],['buyer','Покупки'],['seller','Продажи']].map(([v,l]) => (
-                <button key={v} onClick={() => setRole(v)} style={{
-                  flex:1, padding:'8px', borderRadius:8, border:'1px solid', cursor:'pointer',
-                  fontSize:12, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
-                  background: role===v ? 'rgba(245,200,66,0.1)' : 'transparent',
-                  borderColor: role===v ? 'rgba(245,200,66,0.4)' : 'var(--border)',
-                  color: role===v ? 'var(--accent)' : 'var(--t3)'
-                }}>{l}</button>
-              ))}
-            </div>
-            {loading ? (
-              [0,1,2,3].map(i => <div key={i} className="skel" style={{ height:80, borderRadius:14 }}/>)
-            ) : deals.length===0 ? (
-              <div style={{ textAlign:'center', padding:'24px 12px', color:'var(--t3)' }}>
-                <Package size={36} strokeWidth={0.75} style={{ opacity:0.25, marginBottom:10 }}/>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:700 }}>Сделок нет</div>
-              </div>
-            ) : deals.map(d => (
-              <DealListItem key={d._id||d.id} d={d}
-                isSelected={(selected?._id||selected?.id) === (d._id||d.id)}
-                isBuyer={isBuyer(d)}
-                onClick={() => loadDeal(d._id||d.id)}
-              />
-            ))}
-          </div>
-          <DetailPanel/>
-        </div>
-      )}
-      </div>
     </div>
   )
 }
