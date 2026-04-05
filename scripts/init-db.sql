@@ -194,6 +194,19 @@ CREATE TABLE IF NOT EXISTS referral_rewards (
   created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
 );
 
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  icon TEXT DEFAULT '🔔',
+  link TEXT,
+  is_read INTEGER DEFAULT 0,
+  created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_products_category  ON products(category, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_products_seller    ON products(seller_id, status);
