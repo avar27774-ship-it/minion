@@ -71,6 +71,7 @@ export default function WalletPage() {
   const [modal, setModal]     = useState(null)
   const [amount, setAmount]   = useState('')
   const [address, setAddress] = useState('')
+  const [withdrawMethod, setWithdrawMethod] = useState('cryptobot') // 'cryptobot' | 'sbp' | 'card'
   const [working, setWorking] = useState(false)
   const [payMethod, setPayMethod] = useState('rukassa')
 
@@ -111,7 +112,11 @@ export default function WalletPage() {
     if (!address.trim()) return toast.error('Введите адрес CryptoBot')
     setWorking(true)
     try {
-      const { data } = await api.post('/wallet/withdraw', { amount: amt, address: address.trim(), currency: 'USDT' })
+      const endpoint = withdrawMethod === 'cryptobot' ? '/wallet/withdraw' : '/wallet/withdraw/rukassa'
+      const body = withdrawMethod === 'cryptobot'
+        ? { amount: amt, address: address.trim(), currency: 'USDT' }
+        : { amount: amt, account: address.trim(), method: withdrawMethod }
+      const { data } = await api.post(endpoint, body)
       toast.success(data.message || 'Запрос отправлен')
       setModal(null); setAmount(''); setAddress('')
       refreshUser()
@@ -335,8 +340,29 @@ export default function WalletPage() {
       {modal === 'withdraw' && (
         <BottomSheet onClose={() => setModal(null)} title="↑ Вывести средства">
 
-          <div style={{ background:'var(--bg3)', borderRadius:12, padding:'10px 14px', marginBottom:18, fontSize:13, color:'var(--t3)', lineHeight:1.6 }}>
-            Вывод через <b style={{ color:'var(--t2)' }}>CryptoBot</b> в USDT · Минимум $5 · До 24ч
+          {/* Выбор метода вывода */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:16 }}>
+            {[
+              { id:'cryptobot', label:'CryptoBot', icon:'🤖', desc:'USDT' },
+              { id:'sbp',       label:'СБП',       icon:'⚡', desc:'По номеру' },
+              { id:'card',      label:'Карта',     icon:'💳', desc:'Visa/МИР' },
+            ].map(m => (
+              <button key={m.id} onClick={() => { setWithdrawMethod(m.id); setAddress('') }} style={{
+                padding:'10px 8px', borderRadius:12, border:'1.5px solid', cursor:'pointer',
+                background: withdrawMethod === m.id ? 'rgba(245,200,66,0.1)' : 'var(--bg3)',
+                borderColor: withdrawMethod === m.id ? 'rgba(245,200,66,0.5)' : 'var(--border)',
+                textAlign:'center',
+              }}>
+                <div style={{ fontSize:20, marginBottom:2 }}>{m.icon}</div>
+                <div style={{ fontSize:12, fontWeight:700, color: withdrawMethod === m.id ? 'var(--accent)' : 'var(--t1)' }}>{m.label}</div>
+                <div style={{ fontSize:10, color:'var(--t3)' }}>{m.desc}</div>
+              </button>
+            ))}
+          </div>
+          <div style={{ background:'var(--bg3)', borderRadius:12, padding:'10px 14px', marginBottom:14, fontSize:12, color:'var(--t3)', lineHeight:1.6 }}>
+            {withdrawMethod === 'cryptobot' && <>🤖 Вывод через <b style={{color:'var(--t2)'}}>CryptoBot</b> в USDT · Минимум $5 · До 24ч</>}
+            {withdrawMethod === 'sbp'       && <>⚡ Вывод через <b style={{color:'var(--t2)'}}>СБП</b> на любой банк · Курс ~{Math.round(parseFloat(amount||0)*90) || '90/USD'} RUB · До 24ч</>}
+            {withdrawMethod === 'card'      && <>💳 Вывод на <b style={{color:'var(--t2)'}}>банковскую карту</b> · Visa/МИР · До 24ч</>}
           </div>
 
           {/* Быстрые суммы */}
@@ -382,13 +408,21 @@ export default function WalletPage() {
             )
           })()}
 
-          {/* Адрес */}
-          <input className="inp" placeholder="@username или адрес CryptoBot"
+          {/* Реквизиты */}
+          <input className="inp"
+            placeholder={
+              withdrawMethod === 'cryptobot' ? '@username или адрес USDT' :
+              withdrawMethod === 'sbp'       ? '+7 (999) 123-45-67' :
+                                               '1234 5678 9012 3456'
+            }
             value={address} onChange={e => setAddress(e.target.value)}
+            inputMode={withdrawMethod === 'cryptobot' ? 'text' : 'numeric'}
             style={{ marginBottom:12, fontSize:14, height:50 }}/>
 
           <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.15)', borderRadius:12, padding:'10px 14px', marginBottom:16, fontSize:12, color:'var(--t3)', lineHeight:1.6 }}>
-            Откройте <a href="https://t.me/CryptoBot" target="_blank" rel="noopener" style={{ color:'var(--accent)' }}>@CryptoBot</a> в Telegram → Получить → скопируйте адрес USDT.
+            {withdrawMethod === 'cryptobot' && <>Откройте <a href="https://t.me/CryptoBot" target="_blank" rel="noopener" style={{color:'var(--accent)'}}>@CryptoBot</a> в Telegram → Получить → скопируйте адрес USDT.</>}
+            {withdrawMethod === 'sbp'       && <>Введите номер телефона привязанный к СБП. Деньги придут в рублях по курсу ~90 RUB/USD.</>}
+            {withdrawMethod === 'card'      && <>Введите 16 цифр номера карты (Visa, МИР). Deньги придут в рублях по курсу ~90 RUB/USD.</>}
           </div>
 
           <button className="btn btn-primary btn-full" style={{ height:52, fontSize:16, borderRadius:14 }}
