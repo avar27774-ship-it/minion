@@ -79,7 +79,7 @@ export default function CatalogPage() {
   }
 
   return (
-    <div style={{ position:'relative', minHeight:'100vh', overflow:'hidden' }}>
+    <div style={{ position:'relative', minHeight:'var(--app-height)', overflow:'hidden' }}>
       {/* DarkVeil фон */}
       <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
         <DarkVeil
