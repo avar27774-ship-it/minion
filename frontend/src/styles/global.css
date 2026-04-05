@@ -170,3 +170,11 @@ body::before {
 @supports(padding: max(0px)) {
   body { padding-bottom: env(safe-area-inset-bottom); }
 }
+
+/* ── Telegram Mini App — отключаем пинч-зум полностью ───────────────────────── */
+html, body {
+  touch-action: pan-x pan-y;
+}
+
+/* ── TG горизонтальный скролл (категории) — скрываем скроллбар ──────────────── */
+.tg-hscroll::-webkit-scrollbar { display: none; }
