@@ -21,7 +21,7 @@ function BottomSheet({ children, onClose, title }) {
         background:'var(--bg2)',
         borderRadius:'24px 24px 0 0',
         padding:'0 0 env(safe-area-inset-bottom)',
-        maxHeight:'calc(var(--app-height) * 0.92)',
+        maxHeight:'92vh',
         overflowY:'auto',
         animation:'slideUp 0.3s ease',
       }}>
@@ -213,18 +213,19 @@ export default function WalletPage() {
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:20 }}>
             {[
               { v:'rukassa',     icon:'🏦', label:'RuKassa',     desc:'Карта РФ, СБП · от $100' },
-              { v:'cryptopay',   icon:'✈️', label:'CryptoPay',   desc:'USDT, TON · от $2' },
+              { v:'cryptopay',   icon:'✈️', label:'CryptoPay',   desc:'Временно недоступно', disabled:true },
               { v:'nowpayments', icon:'🌍', label:'NOWPayments',  desc:'350+ крипт · от $1' },
             ].map(m => (
-              <button key={m.v} onClick={() => setPayMethod(m.v)} style={{
-                padding:'14px 8px', borderRadius:14, cursor:'pointer', textAlign:'center', border:'1.5px solid',
-                background: payMethod===m.v ? 'rgba(245,200,66,0.12)' : 'var(--bg3)',
-                borderColor: payMethod===m.v ? 'rgba(245,200,66,0.5)' : 'var(--border)',
-                color: payMethod===m.v ? 'var(--accent)' : 'var(--t3)', transition:'all 0.15s',
+              <button key={m.v} onClick={() => !m.disabled && setPayMethod(m.v)} style={{
+                padding:'14px 8px', borderRadius:14, cursor: m.disabled ? 'not-allowed' : 'pointer', textAlign:'center', border:'1.5px solid',
+                background: m.disabled ? 'var(--bg2)' : payMethod===m.v ? 'rgba(245,200,66,0.12)' : 'var(--bg3)',
+                borderColor: m.disabled ? 'var(--border)' : payMethod===m.v ? 'rgba(245,200,66,0.5)' : 'var(--border)',
+                color: m.disabled ? 'var(--t4)' : payMethod===m.v ? 'var(--accent)' : 'var(--t3)',
+                opacity: m.disabled ? 0.5 : 1, transition:'all 0.15s', position:'relative',
               }}>
                 <div style={{ fontSize:26, marginBottom:6 }}>{m.icon}</div>
                 <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:13 }}>{m.label}</div>
-                <div style={{ fontSize:11, color:'var(--t4)', marginTop:2 }}>{m.desc}</div>
+                <div style={{ fontSize:11, color: m.disabled ? 'var(--red)' : 'var(--t4)', marginTop:2 }}>{m.desc}</div>
               </button>
             ))}
           </div>
