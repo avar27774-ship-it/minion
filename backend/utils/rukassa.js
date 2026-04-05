@@ -6,7 +6,7 @@ const SHOP_ID = () => process.env.RUKASSA_SHOP_ID || '';
 const TOKEN   = () => process.env.RUKASSA_TOKEN   || '';
 const SECRET  = () => process.env.RUKASSA_SECRET  || '';
 
-// Курс USD → RUB (можно задать через переменную окружения)
+// Курс USD → RUB
 const USD_TO_RUB = () => parseFloat(process.env.USD_TO_RUB || '90');
 
 function isConfigured() { return !!(SHOP_ID() && TOKEN()); }
@@ -37,18 +37,13 @@ function request(path, params) {
   });
 }
 
+// ── Создать счёт на пополнение ────────────────────────────────────────────────
 async function createInvoice({ amount, orderId, comment = '', hookUrl = '', successUrl = '' }) {
   if (!isConfigured()) return { ok: false, error: 'RuKassa не настроен' };
 
-  // Конвертируем USD → RUB
-  const amountRub = Math.ceil(parseFloat(amount) * USD_TO_RUB());
-
-  // order_id — числовой уникальный
+  const amountRub      = Math.ceil(parseFloat(amount) * USD_TO_RUB());
   const numericOrderId = Date.now();
-
-  // user_code — уникальный per-заказ (не фиксированный user ID)
-  // Используем случайный чтобы антифрод не блокировал повторные запросы
-  const userCode = crypto.randomBytes(8).toString('hex');
+  const userCode       = crypto.randomBytes(8).toString('hex');
 
   const params = {
     shop_id:          parseInt(SHOP_ID()),
@@ -56,8 +51,8 @@ async function createInvoice({ amount, orderId, comment = '', hookUrl = '', succ
     order_id:         numericOrderId,
     amount:           amountRub,
     currency:         'RUB',
-    user_code:        userCode,           // случайный per-заказ
-    data:             String(orderId),    // наш внутренний orderId для вебхука
+    user_code:        userCode,
+    data:             String(orderId),
     notification_url: hookUrl,
     success_url:      successUrl,
     fail_url:         successUrl,
@@ -68,9 +63,45 @@ async function createInvoice({ amount, orderId, comment = '', hookUrl = '', succ
   try {
     const res = await request('/api/v1/create', params);
     console.log('[RuKassa] response:', JSON.stringify(res));
-
     if (res && res.url)  return { ok: true, payUrl: res.url,  invoiceId: String(res.id || numericOrderId) };
     if (res && res.link) return { ok: true, payUrl: res.link, invoiceId: String(res.id || numericOrderId) };
+    return { ok: false, error: res?.message || res?.error || JSON.stringify(res) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ── Выплата пользователю (СБП / карта) ───────────────────────────────────────
+// account — номер телефона (СБП) или номер карты
+// method  — 'sbp' | 'card'
+async function createPayout({ amountUsd, account, method = 'sbp', orderId }) {
+  if (!isConfigured()) return { ok: false, error: 'RuKassa не настроен' };
+
+  const amountRub = Math.floor(parseFloat(amountUsd) * USD_TO_RUB());
+  if (amountRub < 100) return { ok: false, error: 'Минимальная выплата 100 RUB (~$1)' };
+
+  // Нормализуем номер телефона — только цифры
+  const cleanAccount = String(account).replace(/\D/g, '');
+
+  const params = {
+    shop_id:  parseInt(SHOP_ID()),
+    token:    TOKEN(),
+    order_id: orderId || Date.now(),
+    amount:   amountRub,
+    currency: 'RUB',
+    method:   method === 'card' ? 'card' : 'sbp',  // sbp или card
+    account:  cleanAccount,
+  };
+
+  console.log('[RuKassa] createPayout:', JSON.stringify({ ...params, token: '***' }));
+
+  try {
+    const res = await request('/api/v1/payment', params);
+    console.log('[RuKassa] payout response:', JSON.stringify(res));
+
+    if (res && (res.status === 'success' || res.status === 'pending' || res.id)) {
+      return { ok: true, payoutId: String(res.id || ''), status: res.status || 'pending' };
+    }
     return { ok: false, error: res?.message || res?.error || JSON.stringify(res) };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -89,4 +120,4 @@ function verifyWebhook(body) {
   } catch { return false; }
 }
 
-module.exports = { isConfigured, createInvoice, verifyWebhook };
+module.exports = { isConfigured, createInvoice, createPayout, verifyWebhook, USD_TO_RUB };
