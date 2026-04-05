@@ -106,13 +106,13 @@ async function deleteChannelMessage(messageId) {
 // Хранилище последних опубликованных сообщений (в памяти, для текущей сессии)
 const lastChannelMessages = [];
 
-// ── Запрос к Grok (xAI) ──────────────────────────────────────────────────────
+// ── Запрос к Groq ─────────────────────────────────────────────────────────────
 function askGrok(system, userMsg) {
-  const apiKey = process.env.XAI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return Promise.resolve('AI временно недоступен.');
   return new Promise((resolve) => {
     const body = JSON.stringify({
-      model: process.env.GROK_MODEL || 'grok-3-mini',
+      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
       max_tokens: 500,
       messages: [
         { role: 'system', content: system },
@@ -120,8 +120,8 @@ function askGrok(system, userMsg) {
       ],
     });
     const req = https.request({
-      hostname: 'api.x.ai',
-      path: '/v1/chat/completions',
+      hostname: 'api.groq.com',
+      path: '/openai/v1/chat/completions',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -135,13 +135,13 @@ function askGrok(system, userMsg) {
         try {
           const json = JSON.parse(data);
           if (json.error) {
-            console.error('[Bot] Grok API error:', json.error);
+            console.error('[Bot] Groq API error:', json.error);
             resolve('Сервис временно недоступен. Попробуйте позже.');
           } else {
             resolve(json?.choices?.[0]?.message?.content || 'Не могу ответить.');
           }
         } catch(e) {
-          console.error('[Bot] Grok parse error:', e.message);
+          console.error('[Bot] Groq parse error:', e.message);
           resolve('Ошибка обработки ответа.');
         }
       });
@@ -1262,7 +1262,7 @@ async function handleUpdate(update) {
 
   // ── Свободный чат с AI ────────────────────────────────────────────────────
   try {
-    if (!process.env.XAI_API_KEY) {
+    if (!process.env.GROQ_API_KEY) {
       await sendMessage(chatId, 'AI временно недоступен. Используйте /help для списка команд.');
       return;
     }
