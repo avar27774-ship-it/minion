@@ -8,6 +8,9 @@ import ProductCard from '../components/ProductCard'
 import * as THREE from 'three'
 import { BloomEffect, EffectComposer, EffectPass, RenderPass, SMAAEffect, SMAAPreset } from 'postprocessing'
 
+// ── Detect Telegram Mini App ───────────────────────────────────────────────────
+const isTG = () => !!(window.Telegram?.WebApp?.initData)
+
 // ── Hyperspeed component (inline) ─────────────────────────────────────────────
 const HYPERSPEED_OPTIONS = {
   distortion: 'turbulentDistortion',
@@ -378,34 +381,185 @@ function HyperspeedCanvas({ options = HYPERSPEED_OPTIONS }) {
 
 // ── Page data ─────────────────────────────────────────────────────────────────
 const FEATURES = [
-  { icon: <ShieldCheck size={28} strokeWidth={1.5}/>, title:'Гарантия сделки', desc:'Деньги замораживаются до подтверждения получения товара' },
-  { icon: <Zap size={28} strokeWidth={1.5}/>, title:'Быстрая оплата', desc:'CryptoCloud, RuKassa (карта РФ, СБП) и CryptoBot' },
-  { icon: <Handshake size={28} strokeWidth={1.5}/>, title:'Арбитраж споров', desc:'Команда администраторов решит любой спор за 24 часа' },
-  { icon: <Layers size={28} strokeWidth={1.5}/>, title:'Тысячи товаров', desc:'Аккаунты, скины, валюта, ключи и многое другое' },
+  { icon: <ShieldCheck size={24} strokeWidth={1.5}/>, title:'Гарантия сделки', desc:'Деньги замораживаются до подтверждения' },
+  { icon: <Zap size={24} strokeWidth={1.5}/>, title:'Быстрая оплата', desc:'CryptoCloud, RuKassa, CryptoBot' },
+  { icon: <Handshake size={24} strokeWidth={1.5}/>, title:'Арбитраж споров', desc:'Решаем любой спор за 24 часа' },
+  { icon: <Layers size={24} strokeWidth={1.5}/>, title:'Тысячи товаров', desc:'Аккаунты, скины, валюта, ключи' },
 ]
 
 const CATEGORIES = [
-  { icon: <Gamepad2 size={26} strokeWidth={1.5}/>, name:'Аккаунты', slug:'game-accounts', count:'1.2k+' },
-  { icon: <Coins size={26} strokeWidth={1.5}/>, name:'Валюта', slug:'game-currency', count:'800+' },
-  { icon: <Sword size={26} strokeWidth={1.5}/>, name:'Предметы', slug:'items', count:'500+' },
-  { icon: <Palette size={26} strokeWidth={1.5}/>, name:'Скины', slug:'skins', count:'2.1k+' },
-  { icon: <KeyRound size={26} strokeWidth={1.5}/>, name:'Ключи', slug:'keys', count:'300+' },
-  { icon: <Star size={26} strokeWidth={1.5}/>, name:'Подписки', slug:'subscriptions', count:'150+' },
-  { icon: <Rocket size={26} strokeWidth={1.5}/>, name:'Буст', slug:'boost', count:'200+' },
-  { icon: <Package size={26} strokeWidth={1.5}/>, name:'Прочее', slug:'other', count:'400+' },
+  { icon: <Gamepad2 size={22} strokeWidth={1.5}/>, name:'Аккаунты', slug:'game-accounts', count:'1.2k+' },
+  { icon: <Coins size={22} strokeWidth={1.5}/>, name:'Валюта', slug:'game-currency', count:'800+' },
+  { icon: <Sword size={22} strokeWidth={1.5}/>, name:'Предметы', slug:'items', count:'500+' },
+  { icon: <Palette size={22} strokeWidth={1.5}/>, name:'Скины', slug:'skins', count:'2.1k+' },
+  { icon: <KeyRound size={22} strokeWidth={1.5}/>, name:'Ключи', slug:'keys', count:'300+' },
+  { icon: <Star size={22} strokeWidth={1.5}/>, name:'Подписки', slug:'subscriptions', count:'150+' },
+  { icon: <Rocket size={22} strokeWidth={1.5}/>, name:'Буст', slug:'boost', count:'200+' },
+  { icon: <Package size={22} strokeWidth={1.5}/>, name:'Прочее', slug:'other', count:'400+' },
 ]
+
+const STATS = [['5000+','Товаров'],['12k+','Юзеров'],['98%','Сделок'],['24/7','Поддержка']]
+
+// ── TG Hero (лёгкий, без WebGL) ───────────────────────────────────────────────
+function TGHero({ user }) {
+  return (
+    <section style={{
+      position: 'relative', padding: '32px 16px 28px', overflow: 'hidden',
+      background: 'linear-gradient(160deg, #0d0d14 0%, #12102a 50%, #0d0d14 100%)',
+    }}>
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(124,106,255,0.18) 0%, transparent 70%)',
+      }}/>
+      <div style={{
+        position: 'absolute', bottom: -40, right: -40, width: 180, height: 180, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(245,200,66,0.12) 0%, transparent 70%)',
+        pointerEvents: 'none',
+      }}/>
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <div className="badge badge-yellow anim-in" style={{ marginBottom: 16, display: 'inline-flex' }}>
+          ✦ Маркетплейс цифровых товаров
+        </div>
+        <h1 className="anim-up" style={{
+          fontFamily: 'var(--font-h)', fontWeight: 800,
+          fontSize: 'clamp(26px, 7vw, 40px)',
+          lineHeight: 1.1, letterSpacing: '-0.025em',
+          marginBottom: 10, animationDelay: '0.05s',
+          display: 'flex', flexDirection: 'column', gap: 6,
+        }}>
+          <span>Покупай и продавай</span>
+          <RotatingText
+            texts={['безопасно', 'быстро', 'выгодно', 'с гарантией']}
+            mainClassName="text-rotate-highlight"
+            staggerFrom="last"
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '-120%' }}
+            staggerDuration={0.025}
+            splitLevelClassName="overflow-hidden"
+            transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+            rotationInterval={2500}
+          />
+        </h1>
+        <p className="anim-up" style={{
+          color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 1.6,
+          marginBottom: 20, animationDelay: '0.1s',
+        }}>
+          Тысячи цифровых товаров с защитой сделки. Деньги — продавцу только после вашего подтверждения.
+        </p>
+        <div className="anim-up" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', animationDelay: '0.15s' }}>
+          <Link to="/catalog" className="btn btn-primary" style={{
+            flex: 1, minWidth: 130, padding: '13px 20px', fontSize: 14,
+            boxShadow: '0 6px 24px rgba(245,200,66,0.35)',
+          }}>Каталог →</Link>
+          {!user && (
+            <Link to="/auth?mode=register" className="btn btn-secondary" style={{ flex: 1, minWidth: 130, padding: '13px 20px', fontSize: 14 }}>
+              Регистрация
+            </Link>
+          )}
+        </div>
+        <div className="anim-up" style={{
+          display: 'grid', gridTemplateColumns: 'repeat(4,1fr)',
+          gap: 8, marginTop: 24, animationDelay: '0.2s',
+        }}>
+          {STATS.map(([n,l]) => (
+            <div key={l} style={{
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+              borderRadius: 12, padding: '10px 4px', textAlign: 'center',
+            }}>
+              <div style={{ fontFamily: 'var(--font-h)', fontWeight: 800, fontSize: 15, color: 'var(--accent)', lineHeight: 1 }}>{n}</div>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, marginTop: 3 }}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Web Hero (с 3D Hyperspeed) ────────────────────────────────────────────────
+function WebHero({ user }) {
+  return (
+    <section style={{ position:'relative', height:'var(--app-height)', minHeight:600, maxHeight:900, overflow:'hidden' }}>
+      <HyperspeedCanvas />
+      <div style={{
+        position:'absolute', inset:0, zIndex:1,
+        background:'linear-gradient(to bottom, rgba(13,13,20,0.3) 0%, rgba(13,13,20,0.5) 60%, rgba(13,13,20,1) 100%)'
+      }}/>
+      <div style={{
+        position:'relative', zIndex:2,
+        height:'100%', display:'flex', flexDirection:'column',
+        alignItems:'center', justifyContent:'center',
+        textAlign:'center', padding:'20px',
+      }}>
+        <div className="badge badge-yellow anim-in" style={{ marginBottom:20, display:'inline-flex' }}>
+          ✦ Маркетплейс цифровых товаров
+        </div>
+        <h1 className="anim-up" style={{
+          fontFamily:'var(--font-h)', fontWeight:800,
+          fontSize:'clamp(36px, 6vw, 80px)',
+          lineHeight:1.05, letterSpacing:'-0.03em',
+          marginBottom:20, textShadow:'0 4px 40px rgba(0,0,0,0.8)',
+          animationDelay:'0.1s',
+          display:'flex', flexDirection:'column', alignItems:'center', gap:12
+        }}>
+          <span>Покупай и продавай</span>
+          <RotatingText
+            texts={['безопасно', 'быстро', 'выгодно', 'с гарантией']}
+            mainClassName="text-rotate-highlight"
+            staggerFrom="last"
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '-120%' }}
+            staggerDuration={0.025}
+            splitLevelClassName="overflow-hidden"
+            transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+            rotationInterval={2500}
+          />
+        </h1>
+        <p className="anim-up" style={{
+          color:'rgba(255,255,255,0.8)', fontSize:18, lineHeight:1.6,
+          maxWidth:520, margin:'0 auto 36px',
+          textShadow:'0 2px 20px rgba(0,0,0,0.9)',
+          animationDelay:'0.2s'
+        }}>
+          Тысячи цифровых товаров с защитой сделки. Деньги переводятся продавцу только после вашего подтверждения.
+        </p>
+        <div className="anim-up" style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap', animationDelay:'0.3s' }}>
+          <Link to="/catalog" className="btn btn-primary" style={{ padding:'14px 32px', fontSize:16, boxShadow:'0 8px 32px rgba(245,200,66,0.4)' }}>
+            Смотреть каталог →
+          </Link>
+          {!user && (
+            <Link to="/auth?mode=register" className="btn btn-secondary" style={{ padding:'14px 32px', fontSize:16, backdropFilter:'blur(10px)' }}>
+              Зарегистрироваться
+            </Link>
+          )}
+        </div>
+        <div className="anim-up" style={{ display:'flex', gap:32, justifyContent:'center', marginTop:48, flexWrap:'wrap', animationDelay:'0.4s' }}>
+          {STATS.map(([n,l]) => (
+            <div key={l} style={{ textAlign:'center' }}>
+              <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:28, color:'var(--accent)', textShadow:'0 0 20px rgba(245,200,66,0.4)' }}>{n}</div>
+              <div style={{ color:'rgba(255,255,255,0.5)', fontSize:13 }}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ position:'absolute', bottom:0, left:0, right:0, height:120, background:'linear-gradient(transparent, var(--bg))', zIndex:3, pointerEvents:'none' }}/>
+    </section>
+  )
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const [products, setProducts] = useState([])
   const [loading, setLoading]   = useState(true)
+  const tg = useMemo(() => isTG(), [])
   useMeta({
     title: 'Minions Market — Купить и продать игровые аккаунты, валюту, скины',
     description: 'Безопасный маркетплейс игровых товаров. Покупай аккаунты, валюту, предметы и скины с гарантом. Защита каждой сделки через эскроу.',
     keywords: 'купить игровой аккаунт, продать аккаунт, игровая валюта, скины, маркетплейс игр',
   })
-  const {
- user } = useStore()
+  const { user } = useStore()
 
   useEffect(() => {
     api.get('/products?limit=8&sort=newest')
@@ -414,89 +568,115 @@ export default function HomePage() {
       .finally(() => setLoading(false))
   }, [])
 
-  return (
-    <div>
-      {/* ── Hero with Hyperspeed ─────────────────────────────────────────── */}
-      <section style={{ position:'relative', height:'var(--app-height)', minHeight:600, maxHeight:900, overflow:'hidden' }}>
+  // ── TG Mini App layout ──────────────────────────────────────────────────────
+  if (tg) {
+    return (
+      <div>
+        <TGHero user={user} />
 
-        {/* Hyperspeed background */}
-        <HyperspeedCanvas />
-
-        {/* Dark overlay gradient */}
-        <div style={{
-          position:'absolute', inset:0, zIndex:1,
-          background:'linear-gradient(to bottom, rgba(13,13,20,0.3) 0%, rgba(13,13,20,0.5) 60%, rgba(13,13,20,1) 100%)'
-        }}/>
-
-        {/* Content */}
-        <div style={{
-          position:'relative', zIndex:2,
-          height:'100%', display:'flex', flexDirection:'column',
-          alignItems:'center', justifyContent:'center',
-          textAlign:'center', padding:'20px',
-        }}>
-          <div className="badge badge-yellow anim-in" style={{ marginBottom:20, display:'inline-flex' }}>
-            ✦ Маркетплейс цифровых товаров
+        {/* Категории — горизонтальный скролл */}
+        <section style={{ padding: '20px 0 4px' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+            <h2 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:18 }}>Категории</h2>
+            <Link to="/catalog" style={{ color:'var(--t3)', fontSize:12, fontFamily:'var(--font-h)', fontWeight:600 }}>Все →</Link>
           </div>
-
-          <h1 className="anim-up" style={{
-            fontFamily:'var(--font-h)', fontWeight:800,
-            fontSize:'clamp(36px, 6vw, 80px)',
-            lineHeight:1.05, letterSpacing:'-0.03em',
-            marginBottom:20, textShadow:'0 4px 40px rgba(0,0,0,0.8)',
-            animationDelay:'0.1s',
-            display:'flex', flexDirection:'column', alignItems:'center', gap:12
+          <div style={{
+            display:'flex', gap:10, overflowX:'auto', padding:'0 16px 8px',
+            scrollSnapType:'x mandatory', WebkitOverflowScrolling:'touch',
+            scrollbarWidth:'none',
           }}>
-            <span>Покупай и продавай</span>
-            <RotatingText
-              texts={['безопасно', 'быстро', 'выгодно', 'с гарантией']}
-              mainClassName="text-rotate-highlight"
-              staggerFrom="last"
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '-120%' }}
-              staggerDuration={0.025}
-              splitLevelClassName="overflow-hidden"
-              transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-              rotationInterval={2500}
-            />
-          </h1>
-
-          <p className="anim-up" style={{
-            color:'rgba(255,255,255,0.8)', fontSize:18, lineHeight:1.6,
-            maxWidth:520, margin:'0 auto 36px',
-            textShadow:'0 2px 20px rgba(0,0,0,0.9)',
-            animationDelay:'0.2s'
-          }}>
-            Тысячи цифровых товаров с защитой сделки. Деньги переводятся продавцу только после вашего подтверждения.
-          </p>
-
-          <div className="anim-up" style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap', animationDelay:'0.3s' }}>
-            <Link to="/catalog" className="btn btn-primary" style={{ padding:'14px 32px', fontSize:16, boxShadow:'0 8px 32px rgba(245,200,66,0.4)' }}>
-              Смотреть каталог →
-            </Link>
-            {!user && (
-              <Link to="/auth?mode=register" className="btn btn-secondary" style={{ padding:'14px 32px', fontSize:16, backdropFilter:'blur(10px)' }}>
-                Зарегистрироваться
+            {CATEGORIES.map(cat => (
+              <Link key={cat.slug} to={`/catalog?category=${cat.slug}`} style={{ textDecoration:'none', flexShrink:0, scrollSnapAlign:'start' }}>
+                <div style={{
+                  background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14,
+                  padding:'12px 10px', display:'flex', flexDirection:'column', alignItems:'center', gap:8,
+                  width:76, cursor:'pointer',
+                }}>
+                  <div style={{
+                    width:40, height:40, borderRadius:12, background:'var(--bg3)',
+                    display:'flex', alignItems:'center', justifyContent:'center', color:'var(--accent)',
+                  }}>{cat.icon}</div>
+                  <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:10, textAlign:'center', color:'var(--t1)', lineHeight:1.2 }}>{cat.name}</div>
+                  <div style={{ color:'var(--t4)', fontSize:9 }}>{cat.count}</div>
+                </div>
               </Link>
-            )}
+            ))}
           </div>
+        </section>
 
-          <div className="anim-up" style={{ display:'flex', gap:32, justifyContent:'center', marginTop:48, flexWrap:'wrap', animationDelay:'0.4s' }}>
-            {[['5000+','Товаров'],['12k+','Пользователей'],['98%','Успешных сделок'],['24/7','Поддержка']].map(([n,l]) => (
-              <div key={l} style={{ textAlign:'center' }}>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:28, color:'var(--accent)', textShadow:'0 0 20px rgba(245,200,66,0.4)' }}>{n}</div>
-                <div style={{ color:'rgba(255,255,255,0.5)', fontSize:13 }}>{l}</div>
+        {/* Новые товары — 2 колонки */}
+        <section style={{ padding:'16px 0 8px' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+            <h2 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:18 }}>Новые товары</h2>
+            <Link to="/catalog" style={{ color:'var(--t3)', fontSize:12, fontFamily:'var(--font-h)', fontWeight:600 }}>Все →</Link>
+          </div>
+          {loading ? (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, padding:'0 16px' }}>
+              {Array(4).fill(0).map((_,i) => <div key={i} className="skel" style={{ height:200, borderRadius:14 }}/>)}
+            </div>
+          ) : products.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'40px 16px', color:'var(--t3)' }}>
+              <Box size={40} strokeWidth={1} style={{ marginBottom:12, opacity:0.4 }}/>
+              <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:16, marginBottom:8 }}>Товаров пока нет</div>
+              <Link to="/sell" className="btn btn-primary" style={{ marginTop:12, display:'inline-flex', fontSize:13 }}>Разместить товар</Link>
+            </div>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, padding:'0 16px' }}>
+              {products.map((p,i) => <ProductCard key={p._id||p.id} product={p} style={{ animationDelay:`${i*40}ms` }}/>)}
+            </div>
+          )}
+        </section>
+
+        {/* Почему мы */}
+        <section style={{ padding:'20px 16px 8px' }}>
+          <h2 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:18, marginBottom:12 }}>Почему выбирают нас</h2>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {FEATURES.map(f => (
+              <div key={f.title} style={{
+                background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14,
+                padding:'14px 16px', display:'flex', alignItems:'center', gap:14,
+              }}>
+                <div style={{
+                  width:44, height:44, borderRadius:12,
+                  background:'rgba(124,106,255,0.12)', border:'1px solid rgba(124,106,255,0.2)',
+                  display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, color:'var(--purple)',
+                }}>{f.icon}</div>
+                <div>
+                  <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:13, marginBottom:2 }}>{f.title}</div>
+                  <div style={{ color:'var(--t3)', fontSize:12, lineHeight:1.5 }}>{f.desc}</div>
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        </section>
 
-        {/* Bottom fade */}
-        <div style={{ position:'absolute', bottom:0, left:0, right:0, height:120, background:'linear-gradient(transparent, var(--bg))', zIndex:3, pointerEvents:'none' }}/>
-      </section>
+        {/* CTA */}
+        {!user && (
+          <section style={{ padding:'20px 16px 12px' }}>
+            <div style={{
+              background:'linear-gradient(135deg, rgba(124,106,255,0.12) 0%, rgba(245,200,66,0.08) 100%)',
+              border:'1px solid rgba(245,200,66,0.2)', borderRadius:20, padding:'24px 20px', textAlign:'center',
+            }}>
+              <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, marginBottom:8 }}>Готов начать?</div>
+              <p style={{ color:'var(--t2)', fontSize:13, marginBottom:16, lineHeight:1.6 }}>
+                Зарегистрируйся за 30 секунд и начни торговать.
+              </p>
+              <Link to="/auth?mode=register" className="btn btn-primary" style={{ width:'100%', display:'flex', padding:'14px 20px' }}>
+                Создать аккаунт →
+              </Link>
+            </div>
+          </section>
+        )}
+      </div>
+    )
+  }
 
-      {/* ── Categories ──────────────────────────────────────────────────── */}
+  // ── Web / Desktop layout ────────────────────────────────────────────────────
+  return (
+    <div>
+      <WebHero user={user} />
+
+      {/* Categories */}
       <section style={{ padding:'60px 20px', maxWidth:1200, margin:'0 auto' }}>
         <h2 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:28, marginBottom:24 }}>Категории</h2>
         <div className="grid-4">
@@ -519,7 +699,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── New products ─────────────────────────────────────────────────── */}
+      {/* New products */}
       <section style={{ padding:'0 20px 60px', maxWidth:1200, margin:'0 auto' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
           <h2 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:28 }}>Новые товары</h2>
@@ -541,7 +721,7 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* ── Features ─────────────────────────────────────────────────────── */}
+      {/* Features */}
       <section style={{ padding:'60px 20px', background:'var(--bg2)', borderTop:'1px solid var(--border)', borderBottom:'1px solid var(--border)' }}>
         <div style={{ maxWidth:1200, margin:'0 auto' }}>
           <h2 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:28, textAlign:'center', marginBottom:40 }}>Почему выбирают нас</h2>
@@ -557,7 +737,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── CTA ──────────────────────────────────────────────────────────── */}
       {!user && (
         <section style={{ padding:'80px 20px', textAlign:'center', maxWidth:600, margin:'0 auto' }}>
           <h2 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:36, marginBottom:16 }}>Готов начать?</h2>
