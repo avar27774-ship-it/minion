@@ -417,7 +417,7 @@ export default function HomePage() {
   return (
     <div>
       {/* ── Hero with Hyperspeed ─────────────────────────────────────────── */}
-      <section style={{ position:'relative', height:'100vh', minHeight:600, maxHeight:900, overflow:'hidden' }}>
+      <section style={{ position:'relative', height:'var(--app-height)', minHeight:600, maxHeight:900, overflow:'hidden' }}>
 
         {/* Hyperspeed background */}
         <HyperspeedCanvas />
