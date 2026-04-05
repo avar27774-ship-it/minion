@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { Wallet, Handshake, FileText, RotateCcw, Mail, Zap, UserCircle, LogOut, Settings, Home, LayoutGrid, Plus, DollarSign, ShieldCheck, MessageCircle, Search } from './Icon'
+import { Wallet, Handshake, FileText, RotateCcw, Mail, Zap, UserCircle, LogOut, Settings, Home, LayoutGrid, Plus, DollarSign, ShieldCheck, MessageCircle, Search, Bell } from './Icon'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useStore, api } from '../store'
 
@@ -11,6 +11,14 @@ const IconPlus     = () => <Plus size={26} strokeWidth={2.5}/>
 const IconMessages = () => <MessageCircle size={22} strokeWidth={1.75}/>
 const IconProfile  = () => <UserCircle size={22} strokeWidth={1.75}/>
 
+function timeAgo(date) {
+  const sec = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
+  if (sec < 60)   return 'только что'
+  if (sec < 3600) return `${Math.floor(sec/60)} мин назад`
+  if (sec < 86400) return `${Math.floor(sec/3600)} ч назад`
+  return `${Math.floor(sec/86400)} дн назад`
+}
+
 export default function Layout({ children }) {
   const { user, setUser, logout, refreshUser } = useStore()
   const navigate  = useNavigate()
@@ -18,6 +26,40 @@ export default function Layout({ children }) {
   const [menuOpen,   setMenuOpen]   = useState(false)
   const [mobileMenu, setMobileMenu] = useState(false)
   const [scrolled,   setScrolled]   = useState(false)
+  const [notifOpen,  setNotifOpen]  = useState(false)
+  const [notifs,     setNotifs]     = useState([])
+  const [unread,     setUnread]     = useState(0)
+
+  const loadNotifs = useCallback(async () => {
+    if (!user) return
+    try {
+      const r = await api.get('/users/me/notifications')
+      setNotifs(r.data.notifications || [])
+      setUnread(r.data.unread || 0)
+    } catch {}
+  }, [user])
+
+  useEffect(() => {
+    loadNotifs()
+    const t = setInterval(loadNotifs, 30000)
+    return () => clearInterval(t)
+  }, [loadNotifs])
+
+  const markAllRead = async () => {
+    try {
+      await api.post('/users/me/notifications/read', {})
+      setNotifs(n => n.map(x => ({ ...x, is_read: 1 })))
+      setUnread(0)
+    } catch {}
+  }
+
+  const clearAll = async () => {
+    try {
+      await api.delete('/users/me/notifications')
+      setNotifs([])
+      setUnread(0)
+    } catch {}
+  }
 
   useEffect(() => {
     const token = localStorage.getItem('mn_token')
@@ -106,7 +148,150 @@ export default function Layout({ children }) {
             {user ? (
               <>
                 <Link to="/sell" className="btn btn-sm btn-secondary">+ Продать</Link>
+
+                {/* Колокольчик уведомлений */}
                 <div style={{ position:'relative' }}>
+                  <button
+                    onClick={() => { setNotifOpen(o => !o); if (!notifOpen && unread > 0) markAllRead() }}
+                    style={{
+                      width:38, height:38, borderRadius:10, border:'1px solid var(--border)',
+                      background:'var(--bg3)', cursor:'pointer',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      color: unread > 0 ? 'var(--accent)' : 'var(--t3)', position:'relative',
+                    }}
+                  >
+                    <Bell size={18} strokeWidth={1.75}/>
+                    {unread > 0 && (
+                      <span style={{
+                        position:'absolute', top:-4, right:-4,
+                        background:'var(--red)', color:'#fff',
+                        fontSize:10, fontWeight:800, fontFamily:'var(--font-h)',
+                        width:18, height:18, borderRadius:100,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        border:'2px solid var(--bg1)',
+                      }}>
+                        {unread > 9 ? '9+' : unread}
+                      </span>
+                    )}
+                  </button>
+
+                  {notifOpen && (
+                    <div onClick={() => setNotifOpen(false)} style={{ position:'fixed', inset:0, zIndex:50 }}>
+                      <div onClick={e => e.stopPropagation()} style={{
+                        position:'absolute', top:'calc(100% + 8px)', right:0,
+                        width:340, maxHeight:480,
+                        background:'var(--bg2)', border:'1px solid var(--border)',
+                        borderRadius:20, overflow:'hidden',
+                        boxShadow:'0 16px 48px rgba(0,0,0,0.6)', zIndex:51,
+                        animation:'fadeUp 0.2s ease',
+                        display:'flex', flexDirection:'column',
+                      }}>
+                        {/* Шапка дропдауна */}
+                        <div style={{
+                          display:'flex', alignItems:'center', justifyContent:'space-between',
+                          padding:'14px 16px', borderBottom:'1px solid var(--border)',
+                          flexShrink:0,
+                        }}>
+                          <span style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:15 }}>
+                            🔔 Уведомления
+                          </span>
+                          <div style={{ display:'flex', gap:8 }}>
+                            {notifs.length > 0 && (
+                              <button onClick={clearAll} style={{
+                                fontSize:11, color:'var(--t4)', background:'none',
+                                border:'none', cursor:'pointer', padding:'2px 6px',
+                                borderRadius:6,
+                              }}>
+                                Очистить
+                              </button>
+                            )}
+                            {unread > 0 && (
+                              <button onClick={markAllRead} style={{
+                                fontSize:11, color:'var(--accent)', background:'none',
+                                border:'none', cursor:'pointer', padding:'2px 6px',
+                                borderRadius:6,
+                              }}>
+                                Прочитать все
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Список */}
+                        <div style={{ overflow:'auto', flex:1 }}>
+                          {notifs.length === 0 ? (
+                            <div style={{
+                              padding:'40px 20px', textAlign:'center',
+                              color:'var(--t4)', fontSize:13,
+                            }}>
+                              <div style={{ fontSize:32, marginBottom:8 }}>🔕</div>
+                              Уведомлений пока нет
+                            </div>
+                          ) : notifs.map(n => (
+                            <div
+                              key={n.id || n._id}
+                              onClick={() => {
+                                setNotifOpen(false)
+                                if (n.link) navigate(n.link)
+                              }}
+                              style={{
+                                display:'flex', gap:12, padding:'12px 16px',
+                                borderBottom:'1px solid var(--border)',
+                                cursor: n.link ? 'pointer' : 'default',
+                                background: n.is_read ? 'transparent' : 'rgba(245,200,66,0.04)',
+                                transition:'background 0.15s',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)' }}
+                              onMouseLeave={e => { e.currentTarget.style.background = n.is_read ? 'transparent' : 'rgba(245,200,66,0.04)' }}
+                            >
+                              {/* Иконка */}
+                              <div style={{
+                                width:36, height:36, borderRadius:10, flexShrink:0,
+                                background:'var(--bg3)',
+                                display:'flex', alignItems:'center', justifyContent:'center',
+                                fontSize:18,
+                              }}>
+                                {n.icon || '🔔'}
+                              </div>
+
+                              {/* Текст */}
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{
+                                  fontSize:13, fontWeight: n.is_read ? 500 : 700,
+                                  color: n.is_read ? 'var(--t2)' : 'var(--t1)',
+                                  marginBottom:2,
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                                }}>
+                                  {n.title}
+                                </div>
+                                {n.body && (
+                                  <div style={{
+                                    fontSize:12, color:'var(--t3)', lineHeight:1.4,
+                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                                  }}>
+                                    {n.body}
+                                  </div>
+                                )}
+                                <div style={{ fontSize:11, color:'var(--t4)', marginTop:3 }}>
+                                  {timeAgo(n.createdAt || n.created_at)}
+                                </div>
+                              </div>
+
+                              {/* Точка непрочитанного */}
+                              {!n.is_read && (
+                                <div style={{
+                                  width:8, height:8, borderRadius:100,
+                                  background:'var(--accent)', flexShrink:0,
+                                  marginTop:4,
+                                }}/>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
                   <button onClick={() => setMenuOpen(!menuOpen)} style={{
                     display:'flex', alignItems:'center', gap:8, padding:'6px 12px',
                     background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10,
