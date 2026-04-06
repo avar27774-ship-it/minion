@@ -339,6 +339,13 @@ router.post('/deals/:id/resolve', async (req, res) => {
         await client.query(`UPDATE users SET balance = balance + $1, frozen_balance = frozen_balance - $1 WHERE id = $2`, [deal.amount, deal.buyer_id]);
         await client.query(`UPDATE products SET status = 'active' WHERE id = $1`, [deal.product_id]);
         await client.query(`UPDATE deals SET status = 'refunded', admin_note = $1, resolved_at = EXTRACT(EPOCH FROM NOW())::BIGINT, updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT WHERE id = $2`, [note || null, deal.id]);
+        // FIX: отсутствовала запись о возврате в таблице transactions — нарушало аудит и историю баланса
+        await client.query(
+          `INSERT INTO transactions (id, user_id, type, amount, status, description, deal_id)
+           VALUES ($1,$2,'refund',$3,'completed',$4,$5)`,
+          [require('crypto').randomUUID(), deal.buyer_id, deal.amount,
+           `Возврат по спору (решение администратора): ${note || '—'}`, deal.id]
+        );
       });
       const [buyer, product] = await Promise.all([
         queryOne('SELECT * FROM users WHERE id = $1', [deal.buyer_id]),
