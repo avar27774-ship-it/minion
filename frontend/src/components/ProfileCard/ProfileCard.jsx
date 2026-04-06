@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import useMeta from '../hooks/useMeta'
+import useMeta from "../../hooks/useMeta"
 import { Gamepad2, Coins, Sword, Palette, KeyRound, Star, Rocket, Package, Search } from '../components/Icon'
 import DarkVeil from '../components/DarkVeil/DarkVeil'
 import { useSearchParams } from 'react-router-dom'
