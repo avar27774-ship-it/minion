@@ -1,298 +1,111 @@
-import React, { useState, useEffect } from 'react'
-import useMeta from '../hooks/useMeta'
-import { Package, Star, ShoppingCart, ShieldCheck, Eye, Heart } from '../components/Icon'
-import { useParams, Link, useNavigate } from 'react-router-dom'
-import { api, useStore } from '../store'
-import toast from 'react-hot-toast'
+import React, { useState } from 'react'
+import { Link } from 'react-router-dom'
+import ElectricBorder from './ElectricBorder/ElectricBorder'
+import QuickView from './QuickView'
+import { useCurrency } from '../hooks/useCurrency'
 
-export default function ProductPage() {
-  const { id } = useParams()
-  const navigate = useNavigate()
-  const { user } = useStore()
-  const [product, setProduct] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [buying, setBuying]       = useState(false)
-  const [favorited, setFavorited] = useState(false)
-  const [favLoading, setFavLoading] = useState(false)
-  const [similar, setSimilar]     = useState([])
+const statusColors = { active:'var(--green)', sold:'var(--t3)', frozen:'var(--accent)', moderation:'var(--purple)' }
+const statusLabels = { active:'В продаже', sold:'Продан', frozen:'В сделке', moderation:'Проверка' }
 
-  useMeta(product ? {
-    title: product.title,
-    description: `${product.title} за $${product.price}. Безопасная покупка через гарант на Minions Market.`,
-    keywords: `${product.title}, ${product.category}, купить`,
-  } : { title: 'Товар' })
-  const [imgIdx, setImgIdx]   = useState(0)
-
-  useEffect(() => {
-    api.get(`/products/${id}`).then(r => {
-      setProduct(r.data)
-      if (r.data.isFavorited !== undefined) setFavorited(!!r.data.isFavorited)
-      // Загружаем похожие сразу после основного товара
-      api.get(`/products/${id}/similar`).then(s => setSimilar(s.data.products || [])).catch(() => {})
-    }).catch(() => navigate('/catalog')).finally(() => setLoading(false))
-  }, [id])
-
-  useEffect(() => {
-    if (!user || !id) return
-    api.get('/users/me/favorites').then(r => {
-      const ids = (r.data.products || []).map(p => p.id || p._id)
-      setFavorited(ids.includes(id))
-    }).catch(() => {})
-  }, [user, id])
-
-  const toggleFavorite = async () => {
-    if (!user) return navigate('/auth')
-    setFavLoading(true)
-    try {
-      const r = await api.post(`/products/${product._id || product.id}/favorite`)
-      setFavorited(r.data.favorited)
-      setProduct(p => ({ ...p, favorites: (p.favorites || 0) + (r.data.favorited ? 1 : -1) }))
-      toast.success(r.data.favorited ? '❤️ Добавлено в избранное' : 'Удалено из избранного')
-    } catch { toast.error('Ошибка') }
-    setFavLoading(false)
-  }
-
-  const buy = async () => {
-    if (!user) return navigate('/auth')
-    if (!window.confirm(`Купить "${product.title}" за $${product.price}? Средства будут заморожены до подтверждения получения.`)) return
-    setBuying(true)
-    try {
-      await api.post('/deals', { productId: product._id || product.id })
-      toast.success('Сделка создана!')
-      navigate('/deals')
-    } catch(e) { toast.error(e.response?.data?.error||'Ошибка') }
-    setBuying(false)
-  }
-
-  if (loading) return (
-    <div style={{ maxWidth:900, margin:'0 auto', padding:'24px 12px' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24 }}>
-        <div className="skel" style={{ height:380 }}/>
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          <div className="skel" style={{ height:40 }}/>
-          <div className="skel" style={{ height:24 }}/>
-          <div className="skel" style={{ height:80 }}/>
-        </div>
-      </div>
-    </div>
-  )
-
+export default function ProductCard({ product, style={} }) {
+  const [hovered, setHovered]       = useState(false)
+  const [quickView, setQuickView]   = useState(false)
+  const { fmt } = useCurrency()
   if (!product) return null
   const seller = product.seller
-  const isMine = user && String(seller?._id || seller?.id) === (user._id || user.id)
+  const img = product.images?.[0]
+  const electricColor = product.isPromoted ? '#f5c842' : '#7c6aff'
 
   return (
-    <div style={{ maxWidth:940, margin:'0 auto', padding:'24px 12px' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:20, fontSize:13, color:'var(--t3)' }}>
-        <Link to="/">Главная</Link> <span>/</span>
-        <Link to="/catalog">Каталог</Link> <span>/</span>
-        <span style={{ color:'var(--t2)' }}>{product.title}</span>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:28 }}>
-        {/* Images */}
-        <div>
-          <div style={{
-            height:360, borderRadius:20, overflow:'hidden', background:'var(--bg3)',
-            backgroundImage: product.images?.[imgIdx] ? `url(${product.images[imgIdx]})` : 'none',
-            backgroundSize:'cover', backgroundPosition:'center', marginBottom:10,
-            display:'flex', alignItems:'center', justifyContent:'center', fontSize:60, color:'var(--t4)'
-          }}>
-            {!product.images?.length && <Package size={64} strokeWidth={0.75} style={{opacity:0.25}}/>}
-          </div>
-          {product.images?.length > 1 && (
-            <div style={{ display:'flex', gap:8 }}>
-              {product.images.map((img,i) => (
-                <div key={i} onClick={() => setImgIdx(i)} style={{
-                  width:60, height:60, borderRadius:10, overflow:'hidden', cursor:'pointer',
-                  backgroundImage:`url(${img})`, backgroundSize:'cover', backgroundPosition:'center',
-                  border:`2px solid ${imgIdx===i ? 'var(--accent)' : 'transparent'}`, flexShrink:0
-                }}/>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Info */}
-        <div>
-          <div style={{ display:'flex', gap:8, marginBottom:12 }}>
-            <span className="badge badge-yellow">{product.category}</span>
-            {product.game && <span className="badge badge-purple">{product.game}</span>}
-          </div>
-          <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:26, lineHeight:1.2, marginBottom:12 }}>{product.title}</h1>
-          <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:40, color:'var(--accent)', marginBottom:20 }}>
-            ${parseFloat(product.price).toFixed(2)}
-          </div>
-
-          {seller && (
-            <Link to={`/user/${seller._id||seller.id}`} style={{
-              display:'flex', alignItems:'center', gap:12, padding:'12px 16px',
-              background:'var(--bg3)', borderRadius:12, marginBottom:20, color:'var(--t1)'
-            }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:'linear-gradient(135deg,var(--purple),var(--accent))', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'var(--font-h)', fontWeight:800, fontSize:14 }}>
-                {(seller.username||seller.firstName||'?')[0].toUpperCase()}
-              </div>
-              <div>
-                <div style={{ fontWeight:600, fontSize:14 }}>@{seller.username||seller.firstName}</div>
-                <div style={{ fontSize:12, color:'var(--t3)' }}><Star size={12} strokeWidth={2} style={{marginRight:3}}/>{parseFloat(seller.rating||5).toFixed(1)} · {seller.totalSales||0} продаж</div>
-              </div>
-            </Link>
-          )}
-
-          {!isMine && product.status==='active' && (
-            <div style={{ marginBottom:16 }}>
-              <div style={{ display:'flex', gap:10, marginBottom:10 }}>
-                <button className="btn btn-primary" onClick={buy} disabled={buying} style={{ flex:1, padding:'16px', fontSize:16 }}>
-                  {buying ? 'Создание сделки...' : `Купить за $${product.price}`}
-                </button>
-                <button
-                  onClick={toggleFavorite}
-                  disabled={favLoading}
-                  title={favorited ? 'Убрать из избранного' : 'В избранное'}
-                  style={{
-                    width:54, height:54, borderRadius:14, border:'1px solid',
-                    borderColor: favorited ? 'rgba(231,76,60,0.5)' : 'var(--border)',
-                    background: favorited ? 'rgba(231,76,60,0.1)' : 'var(--bg3)',
-                    cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
-                    transition:'all 0.2s', flexShrink:0,
-                  }}
-                >
-                  <Heart
-                    size={22}
-                    strokeWidth={favorited ? 0 : 1.75}
-                    style={{ fill: favorited ? '#e74c3c' : 'none', color: favorited ? '#e74c3c' : 'var(--t3)', transition:'all 0.2s' }}
-                  />
-                </button>
-              </div>
-              <div style={{ fontSize:12, color:'var(--t3)', textAlign:'center', lineHeight:1.6 }}>
-                Средства заморожены до подтверждения. Если товар не соответствует — откройте спор.
-              </div>
-            </div>
-          )}
-          {!isMine && product.status!=='active' && (
-            <div style={{ marginBottom:16 }}>
-              <div style={{ display:'flex', gap:10, marginBottom:10 }}>
-                <div className="badge badge-red" style={{ marginBottom:0 }}>Товар недоступен</div>
-                <button
-                  onClick={toggleFavorite}
-                  disabled={favLoading}
-                  title={favorited ? 'Убрать из избранного' : 'Следить за товаром'}
-                  style={{
-                    padding:'8px 16px', borderRadius:14, border:'1px solid',
-                    borderColor: favorited ? 'rgba(231,76,60,0.5)' : 'var(--border)',
-                    background: favorited ? 'rgba(231,76,60,0.1)' : 'var(--bg3)',
-                    cursor:'pointer', display:'flex', alignItems:'center', gap:6,
-                    fontSize:13, color: favorited ? '#e74c3c' : 'var(--t3)',
-                  }}
-                >
-                  <Heart size={14} strokeWidth={favorited ? 0 : 1.75} style={{ fill: favorited ? '#e74c3c' : 'none' }}/>
-                  {favorited ? 'В избранном' : 'В избранное'}
-                </button>
-              </div>
-            </div>
-          )}
-          {!isMine && seller && (
-            <Link
-              to={`/messages/${seller._id||seller.id}`}
-              className="btn btn-secondary btn-full"
-              style={{ marginBottom:10, fontSize:14 }}
-            >
-              💬 Написать продавцу
-            </Link>
-          )}
-          {isMine && <div className="badge badge-yellow" style={{ marginBottom:16 }}>Ваш товар</div>}
-
-          <div style={{ display:'flex', gap:16, color:'var(--t4)', fontSize:12 }}>
-            <span><Eye size={13} strokeWidth={1.75} style={{marginRight:4}}/>{product.views||0} просмотров</span>
-            <span><Heart size={13} strokeWidth={1.75} style={{marginRight:4}}/>{product.favorites||0} в избранном</span>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop:32 }}>
-        <h2 style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:20, marginBottom:16 }}>Описание</h2>
-        <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:24 }}>
-          <pre style={{ fontSize:14, lineHeight:1.8, color:'var(--t2)', whiteSpace:'pre-wrap', fontFamily:'var(--font-b)' }}>{product.description}</pre>
-        </div>
-      </div>
-
-      {product.tags?.length > 0 && (
-        <div style={{ marginTop:20, display:'flex', gap:8, flexWrap:'wrap' }}>
-          {product.tags.map(t => <span key={t} className="badge" style={{ background:'var(--bg3)', color:'var(--t3)' }}>#{t}</span>)}
-        </div>
+    <>
+      {quickView && (
+        <QuickView product={product} onClose={() => setQuickView(false)}/>
       )}
 
-      {similar.length > 0 && (
-        <div style={{ marginTop:40 }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-            <h2 style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:20, margin:0 }}>
-              Похожие товары
-            </h2>
-            <Link
-              to={`/catalog?category=${encodeURIComponent(product.category)}`}
-              style={{ fontSize:13, color:'var(--accent)', textDecoration:'none', fontWeight:600 }}
-            >
-              Смотреть все →
-            </Link>
-          </div>
-          <div style={{
-            display:'grid',
-            gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))',
-            gap:16,
-          }}>
-            {similar.map(p => (
-              <Link
-                key={p.id||p._id}
-                to={`/product/${p.id||p._id}`}
-                style={{ textDecoration:'none', color:'inherit' }}
-              >
-                <div style={{
-                  background:'var(--bg2)',
-                  border:'1px solid var(--border)',
-                  borderRadius:16,
-                  overflow:'hidden',
-                  transition:'transform 0.18s, border-color 0.18s',
-                  cursor:'pointer',
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.borderColor='rgba(245,200,66,0.35)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform='none'; e.currentTarget.style.borderColor='var(--border)'; }}
-                >
-                  {/* Картинка */}
-                  <div style={{
-                    height:130,
-                    background: p.images?.[0]
-                      ? `url(${p.images[0]}) center/cover no-repeat`
-                      : 'var(--bg3)',
-                    display:'flex', alignItems:'center', justifyContent:'center',
-                    fontSize:36, color:'var(--t4)',
-                  }}>
-                    {!p.images?.[0] && <Package size={36} strokeWidth={0.75} style={{opacity:0.25}}/>}
-                  </div>
+      <div
+        style={{ textDecoration:'none', display:'block', position:'relative', ...style }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onTouchStart={() => setHovered(true)}
+        onTouchEnd={() => setTimeout(() => setHovered(false), 600)}
+      >
+        {/* Кнопка быстрого просмотра */}
+        <button
+          onClick={e => { e.stopPropagation(); setQuickView(true) }}
+          style={{
+            position: 'absolute', bottom: 58, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 10, whiteSpace: 'nowrap',
+            padding: '7px 16px', borderRadius: 10,
+            background: 'rgba(13,13,20,0.88)', backdropFilter: 'blur(6px)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            opacity: hovered ? 1 : 0,
+            pointerEvents: hovered ? 'auto' : 'none',
+            transition: 'opacity 0.18s, transform 0.18s',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          👁 Быстрый просмотр
+        </button>
 
-                  {/* Инфо */}
-                  <div style={{ padding:'12px 14px' }}>
-                    <div style={{ fontSize:11, color:'var(--t3)', marginBottom:4 }}>{p.category}</div>
-                    <div style={{
-                      fontSize:13, fontWeight:600, color:'var(--t1)',
-                      lineHeight:1.4, marginBottom:8,
-                      overflow:'hidden', display:'-webkit-box',
-                      WebkitLineClamp:2, WebkitBoxOrient:'vertical',
-                    }}>
-                      {p.title}
-                    </div>
-                    <div style={{
-                      fontFamily:'var(--font-h)', fontWeight:800,
-                      fontSize:16, color:'var(--accent)',
-                    }}>
-                      ${parseFloat(p.price).toFixed(2)}
-                    </div>
-                  </div>
+        <Link
+          to={`/product/${product._id || product.id}`}
+          style={{ textDecoration:'none', display:'block' }}
+        >
+          <ElectricBorder
+            color={electricColor}
+            speed={hovered || product.isPromoted ? (product.isPromoted ? 1.2 : 0.9) : 0}
+            chaos={product.isPromoted ? 0.14 : 0.10}
+            borderRadius={20}
+            active={hovered || !!product.isPromoted}
+          >
+            <div className="card" style={{ cursor:'pointer' }}>
+              <div style={{
+                height:160, background:'var(--bg3)', position:'relative', overflow:'hidden',
+                backgroundImage: img ? `url(${img})` : 'none',
+                backgroundSize:'cover', backgroundPosition:'center',
+              }}>
+                {!img && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:40, opacity:0.3 }}>📦</div>}
+                {product.isPromoted && <div style={{ position:'absolute', top:10, left:10 }}><span className="badge badge-yellow">🚀 ТОП</span></div>}
+                <div style={{ position:'absolute', bottom:0, left:0, right:0, height:60, background:'linear-gradient(transparent, rgba(13,13,20,0.9))' }}/>
+                <div style={{ position:'absolute', top:10, right:10 }}>
+                  <span className="badge" style={{ background:'rgba(13,13,20,0.8)', color: statusColors[product.status]||'var(--t3)', border:'none', fontSize:10 }}>
+                    {statusLabels[product.status]||product.status}
+                  </span>
                 </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+              </div>
+              <div style={{ padding:'14px 16px' }}>
+                <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:15, marginBottom:6, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {product.title}
+                </div>
+                <div style={{ fontSize:12, color:'var(--t3)', marginBottom:12, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {product.category} {product.game ? `• ${product.game}` : ''}
+                </div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, color:'var(--accent)' }}>
+                    {fmt(product.price)}
+                  </div>
+                  {seller && (
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <div style={{ width:22, height:22, borderRadius:6, background:'linear-gradient(135deg,var(--purple),var(--accent))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, fontFamily:'var(--font-h)' }}>
+                        {(seller.username||seller.firstName||'?')[0].toUpperCase()}
+                      </div>
+                      <span style={{ fontSize:12, color:'var(--t3)' }}>{seller.username||seller.firstName}</span>
+                    </div>
+                  )}
+                </div>
+                {seller?.rating && (
+                  <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:10, paddingTop:10, borderTop:'1px solid var(--border)' }}>
+                    <span style={{ color:'var(--accent)', fontSize:12 }}>★ {parseFloat(seller.rating).toFixed(1)}</span>
+                    <span style={{ color:'var(--t4)', fontSize:11 }}>({seller.reviewCount||0} отзывов)</span>
+                    <span style={{ marginLeft:'auto', color:'var(--t4)', fontSize:11 }}>👁 {product.views||0}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </ElectricBorder>
+        </Link>
+      </div>
+    </>
   )
 }
