@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { Wallet, Handshake, FileText, RotateCcw, Mail, Zap, UserCircle, LogOut, Settings, Home, LayoutGrid, Plus, DollarSign, ShieldCheck, MessageCircle, Search, Bell } from './Icon'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useStore, api } from '../store'
+import { useCurrency } from '../hooks/useCurrency'
 
 // ── Иконки для нижней навигации ────────────────────────────────────────────────
 const IconHome     = () => <Home size={22} strokeWidth={1.75}/>
@@ -29,6 +30,7 @@ export default function Layout({ children }) {
   const [notifOpen,  setNotifOpen]  = useState(false)
   const [notifs,     setNotifs]     = useState([])
   const [unread,     setUnread]     = useState(0)
+  const { fmt } = useCurrency()
 
   const loadNotifs = useCallback(async () => {
     if (!user) return
@@ -304,7 +306,7 @@ export default function Layout({ children }) {
                       fontSize:12, fontWeight:700, fontFamily:'var(--font-h)', flexShrink:0
                     }}>{avatar}</div>
                     <span style={{ fontSize:13, fontWeight:600 }}>{user.username || user.firstName}</span>
-                    <span style={{ color:'var(--accent)', fontSize:12, fontWeight:700 }}>${parseFloat(user.balance||0).toFixed(2)}</span>
+                    <span style={{ color:'var(--accent)', fontSize:12, fontWeight:700 }}>{fmt(user.balance||0)}</span>
                   </button>
 
                   {menuOpen && (
@@ -366,7 +368,7 @@ export default function Layout({ children }) {
                 background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10,
                 fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)'
               }}>
-                <DollarSign size={13} strokeWidth={2} style={{marginRight:2}}/>${parseFloat(user.balance||0).toFixed(2)}
+                <DollarSign size={13} strokeWidth={2} style={{marginRight:2}}/>{fmt(user.balance||0)}
               </div>
             )}
             <button
@@ -426,7 +428,7 @@ export default function Layout({ children }) {
                   <div>
                     <div style={{ fontWeight:700, fontSize:15 }}>@{user.username || user.firstName}</div>
                     <div style={{ color:'var(--accent)', fontSize:13, fontWeight:700 }}>
-                      ${parseFloat(user.balance||0).toFixed(2)}
+                      {fmt(user.balance||0)}
                     </div>
                   </div>
                 </div>
