@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
 import { Package, Star, Eye, Heart, ShoppingCart, X, ChevronLeft, ChevronRight } from './Icon'
 import toast from 'react-hot-toast'
+import { useCurrency } from '../hooks/useCurrency'
 
 export default function QuickView({ product, onClose }) {
   const navigate   = useNavigate()
@@ -13,6 +14,7 @@ export default function QuickView({ product, onClose }) {
   const [favorited, setFavorited] = useState(false)
   const [favLoading, setFavLoading] = useState(false)
   const [imgIdx, setImgIdx]       = useState(0)
+  const { fmt } = useCurrency()
 
   const pid = product?._id || product?.id
 
@@ -55,7 +57,7 @@ export default function QuickView({ product, onClose }) {
 
   const buy = async () => {
     if (!user) { onClose(); navigate('/auth'); return }
-    if (!window.confirm(`Купить "${detail.title}" за $${detail.price}?`)) return
+    if (!window.confirm(`Купить "${detail.title}" за ${fmt(detail.price)}?`)) return
     setBuying(true)
     try {
       await api.post('/deals', { productId: pid })
@@ -250,7 +252,7 @@ export default function QuickView({ product, onClose }) {
                   fontFamily: 'var(--font-h)', fontWeight: 800, fontSize: 36,
                   color: 'var(--accent)',
                 }}>
-                  ${parseFloat(p.price || 0).toFixed(2)}
+                  {fmt(p.price || 0)}
                 </div>
 
                 {/* Продавец */}
@@ -309,7 +311,7 @@ export default function QuickView({ product, onClose }) {
                         disabled={buying}
                         style={{ flex: 1, padding: '14px', fontSize: 15 }}
                       >
-                        {buying ? 'Создание...' : `Купить за $${parseFloat(p.price || 0).toFixed(2)}`}
+                        {buying ? 'Создание...' : `Купить за ${fmt(p.price || 0)}`}
                       </button>
                       <button
                         onClick={toggleFavorite}
