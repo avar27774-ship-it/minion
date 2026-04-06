@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import useMeta from "../../hooks/useMeta"
-import { Gamepad2, Coins, Sword, Palette, KeyRound, Star, Rocket, Package, Search } from '../components/Icon'
-import DarkVeil from '../components/DarkVeil/DarkVeil'
-import { useSearchParams } from 'react-router-dom'
-import { useRef } from 'react'
-import { api } from '../store'
-import ProductCard from '../components/ProductCard'
-import { useCurrency } from '../hooks/useCurrency'
-
+import { Gamepad2, Coins, Sword, Palette, KeyRound, Star, Rocket, Package, Search } from '../../components/Icon'
+import DarkVeil from '../../components/DarkVeil/DarkVeil'
+import ProductCard from '../../components/ProductCard'
+import { api } from '../../store'
+import { useCurrency } from '../../hooks/useCurrency'
 const CATEGORIES = [
   { slug:'', name:'Все' },
   { slug:'game-accounts', name:'Аккаунты', icon: <Gamepad2 size={18} strokeWidth={1.5}/> },
