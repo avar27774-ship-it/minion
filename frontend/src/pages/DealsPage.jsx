@@ -5,12 +5,13 @@ import { useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
 import toast from 'react-hot-toast'
 import ReviewPopup from '../components/ReviewPopup'
+import { useCurrency } from '../hooks/useCurrency'
 
 const STATUS_LABELS = { pending:'Ожидание', active:'Активна', completed:'Завершена', disputed:'Спор', cancelled:'Отменена', refunded:'Возврат' }
 const STATUS_COLORS = { pending:'var(--accent)', active:'var(--green)', completed:'var(--t3)', disputed:'var(--red)', cancelled:'var(--t4)', refunded:'#22d3ee' }
 
 function DealListItem({ d, isSelected, isBuyer, onClick }) {
-
+  const { fmt } = useCurrency()
   return (
     <div onClick={onClick} style={{
       background: isSelected ? 'var(--bg3)' : 'var(--bg2)',
@@ -26,7 +27,7 @@ function DealListItem({ d, isSelected, isBuyer, onClick }) {
         </span>
         <span style={{ fontSize:11, fontWeight:700, color: STATUS_COLORS[d.status]||'var(--t3)' }}>{STATUS_LABELS[d.status]||d.status}</span>
       </div>
-      <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:14, color:'var(--accent)', marginTop:4 }}>${parseFloat(d.amount||0).toFixed(2)}</div>
+      <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:14, color:'var(--accent)', marginTop:4 }}>{fmt(d.amount||0)}</div>
     </div>
   )
 }
@@ -34,6 +35,7 @@ function DealListItem({ d, isSelected, isBuyer, onClick }) {
 export default function DealsPage() {
   const { user } = useStore()
   const navigate  = useNavigate()
+  const { fmt } = useCurrency()
   const [deals, setDeals]       = useState([])
   const [loading, setLoading]   = useState(true)
   const [role, setRole]         = useState('all')
@@ -319,7 +321,7 @@ function DetailPanel({ selected, isMobile, uid, isBuyer, isSeller, delivery, set
                 </div>
               </div>
               <div style={{ textAlign:'right', flexShrink:0 }}>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, color:'var(--accent)' }}>${parseFloat(selected.amount||0).toFixed(2)}</div>
+                <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, color:'var(--accent)' }}>{fmt(selected.amount||0)}</div>
                 <div style={{ fontSize:11, color:'var(--t3)' }}>в эскроу</div>
               </div>
             </div>
