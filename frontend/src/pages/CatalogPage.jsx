@@ -36,7 +36,8 @@ export default function CatalogPage() {
   const [searchInput, setSearchInput] = useState(search)
   const [minP, setMinP] = useState(minPrice)
   const [maxP, setMaxP] = useState(maxPrice)
-  const searchRef = useRef(null)
+  const searchRef   = useRef(null)
+  const debounceRef = useRef(null)
 
   // Автофокус на поиске если пришли с кнопки Поиск
   useEffect(() => {
@@ -105,8 +106,8 @@ export default function CatalogPage() {
           value={searchInput}
           onChange={e => {
             setSearchInput(e.target.value)
-            clearTimeout(window._searchTimer)
-            window._searchTimer = setTimeout(() => {
+            clearTimeout(debounceRef.current)
+            debounceRef.current = setTimeout(() => {
               const ns = new URLSearchParams(sp)
               if (e.target.value) ns.set('search', e.target.value)
               else ns.delete('search')
