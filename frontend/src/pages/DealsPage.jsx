@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { CheckCircle, AlertTriangle, RotateCcw, Package, Send, ArrowLeft } from '../components/Icon'
+import { EmptyDeals } from '../components/EmptyState'
+import { DealListSkeleton } from '../components/Skeleton'
 import Particles from '../components/Particles/Particles'
 import { useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
@@ -203,12 +205,9 @@ export default function DealsPage() {
               ))}
             </div>
             {loading ? (
-              [0,1,2,3].map(i => <div key={i} className="skel" style={{ height:80, borderRadius:14 }}/>)
+              <DealListSkeleton count={4} />
             ) : deals.length===0 ? (
-              <div style={{ textAlign:'center', padding:'60px 20px', color:'var(--t3)' }}>
-                <Package size={40} strokeWidth={0.75} style={{ opacity:0.25, marginBottom:12 }}/>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:700 }}>Сделок нет</div>
-              </div>
+              <EmptyDeals role={role} />
             ) : deals.map(d => (
               <DealListItem key={d._id||d.id} d={d}
                 isSelected={false} isBuyer={isBuyer(d)}
@@ -244,12 +243,9 @@ export default function DealsPage() {
               ))}
             </div>
             {loading ? (
-              [0,1,2,3].map(i => <div key={i} className="skel" style={{ height:80, borderRadius:14 }}/>)
+              <DealListSkeleton count={4} />
             ) : deals.length===0 ? (
-              <div style={{ textAlign:'center', padding:'24px 12px', color:'var(--t3)' }}>
-                <Package size={36} strokeWidth={0.75} style={{ opacity:0.25, marginBottom:10 }}/>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:700 }}>Сделок нет</div>
-              </div>
+              <EmptyDeals role={role} compact />
             ) : deals.map(d => (
               <DealListItem key={d._id||d.id} d={d}
                 isSelected={(selected?._id||selected?.id) === (d._id||d.id)}
