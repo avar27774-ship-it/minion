@@ -161,6 +161,10 @@ app.get('/:file([a-z0-9_\-]+\.html)', (req, res) => {
   res.status(404).send('Not found');
 });
 
+// ── API Request Logger (должен быть ДО роутов, иначе не срабатывает) ─────────
+const { apiLogMiddleware } = require('./utils/securityLog');
+app.use(apiLogMiddleware);
+
 // ── Routes ─────────────────────────────────────────────────────────────────────
 app.use('/api/auth',       require('./routes/auth'));
 app.use('/api/products',   require('./routes/products'));
@@ -174,9 +178,6 @@ app.use('/api/messages',   require('./routes/messages'));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
-// ── API Request Logger (всё логируем) ────────────────────────────────────────
-const { apiLogMiddleware } = require('./utils/securityLog');
-app.use(apiLogMiddleware);
 
 // ── Telegram bot (webhook mode) ───────────────────────────────────────────────
 const { getBot, handleUpdate, handleCallback } = require('./utils/bot');
@@ -278,7 +279,6 @@ initSchema()
       created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
     )`).catch(() => {});
     await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ref_code ON users(ref_code) WHERE ref_code IS NOT NULL`).catch(() => {});
-    await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS level_override  INTEGER DEFAULT 0`).catch(() => {});
     await run(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_price_advised INTEGER DEFAULT 0`).catch(() => {});
     await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS ai_reactivated   INTEGER DEFAULT 0`).catch(() => {});
     console.log('✅ AI Admin миграция выполнена');
