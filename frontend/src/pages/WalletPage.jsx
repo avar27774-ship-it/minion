@@ -4,6 +4,7 @@ import { Wallet, ArrowDownCircle, ArrowUpCircle, ShoppingCart, Handshake, Rotate
 import { useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
 import toast from 'react-hot-toast'
+import { useCurrency } from '../hooks/useCurrency'
 
 const TX_ICONS  = { deposit:<ArrowDownCircle size={16} strokeWidth={1.75}/>, withdrawal:<ArrowUpCircle size={16} strokeWidth={1.75}/>, commission:<Zap size={16} strokeWidth={1.75}/>, purchase:<ShoppingCart size={16} strokeWidth={1.75}/>, sale:<DollarSign size={16} strokeWidth={1.75}/>, refund:<RotateCcw size={16} strokeWidth={1.75}/>, adjustment:<Zap size={16} strokeWidth={1.75}/> }
 const TX_COLORS = { deposit:'var(--green)', withdrawal:'var(--red)', sale:'var(--green)', refund:'#22d3ee', adjustment:'var(--purple)', purchase:'var(--red)' }
@@ -64,16 +65,16 @@ export default function WalletPage() {
     title: 'Кошелёк — пополнение и вывод средств',
     description: 'Управляйте балансом на Minions Market. Пополнение через RuKassa и CryptoPay. Вывод через CryptoBot.',
   })
-  const {
- user, setUser, refreshUser } = useStore()
+  const { user, setUser, refreshUser } = useStore()
   const [txs, setTxs]         = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal]     = useState(null)
   const [amount, setAmount]   = useState('')
   const [address, setAddress] = useState('')
-  const [withdrawMethod, setWithdrawMethod] = useState('cryptobot') // 'cryptobot' | 'sbp' | 'card'
+  const [withdrawMethod, setWithdrawMethod] = useState('cryptobot')
   const [working, setWorking] = useState(false)
   const [payMethod, setPayMethod] = useState('rukassa')
+  const { fmt, rub, rate } = useCurrency()
 
   useEffect(() => {
     if (!user) { navigate('/auth'); return }
@@ -86,7 +87,7 @@ export default function WalletPage() {
 
   const deposit = async () => {
     const amt = parseFloat(amount)
-    if (!amt || amt < 2) return toast.error('Минимум $2')
+    if (!amt || amt < 2) return toast.error(`Минимум ${fmt(2)}`)
     setWorking(true)
     try {
       const endpoint = payMethod === 'cryptopay'
@@ -110,7 +111,7 @@ export default function WalletPage() {
 
   const withdraw = async () => {
     const amt = parseFloat(amount)
-    if (!amt || amt < 5) return toast.error('Минимальный вывод $5')
+    if (!amt || amt < 5) return toast.error(`Минимальный вывод ${fmt(5)}`)
     if (!address.trim()) return toast.error('Введите адрес CryptoBot')
     setWorking(true)
     try {
@@ -141,8 +142,8 @@ export default function WalletPage() {
         border:'1px solid rgba(245,200,66,0.25)', borderRadius:24, padding:'24px 20px', marginBottom:16,
       }}>
         <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.14em', marginBottom:6 }}>ДОСТУПНЫЙ БАЛАНС</div>
-        <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:44, color:'var(--accent)', marginBottom:4 }}>${bal.toFixed(2)}</div>
-        {frz > 0 && <div style={{ color:'var(--t3)', fontSize:13, marginBottom:12 }}>🔒 В сделках: ${frz.toFixed(2)}</div>}
+        <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:44, color:'var(--accent)', marginBottom:4 }}>{fmt(bal)}</div>
+        {frz > 0 && <div style={{ color:'var(--t3)', fontSize:13, marginBottom:12 }}>🔒 В сделках: {fmt(frz)}</div>}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:16 }}>
           <button className="btn btn-primary" style={{ height:48, fontSize:15, borderRadius:14 }}
             onClick={() => { setModal('deposit'); setAmount('') }}>
@@ -158,8 +159,8 @@ export default function WalletPage() {
       {/* Статистика */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:24 }}>
         {[
-          ['Пополнено', '$' + parseFloat(user.totalDeposited||0).toFixed(2)],
-          ['Выведено',  '$' + parseFloat(user.totalWithdrawn||0).toFixed(2)],
+          ['Пополнено', fmt(user.totalDeposited||0)],
+          ['Выведено',  fmt(user.totalWithdrawn||0)],
           ['Сделок',   (user.totalPurchases||0)+(user.totalSales||0)],
         ].map(([l,v]) => (
           <div key={l} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:'12px 10px', textAlign:'center' }}>
@@ -204,7 +205,7 @@ export default function WalletPage() {
                   </div>
                 </div>
                 <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:15, color: plus ? 'var(--green)' : 'var(--red)', flexShrink:0 }}>
-                  {plus?'+':'-'}${amt.toFixed(2)}
+                  {plus?'+':'-'}{fmt(amt)}
                 </div>
               </div>
             )
@@ -219,10 +220,10 @@ export default function WalletPage() {
           {/* Выбор метода */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:20 }}>
             {[
-              { v:'rukassa',     icon:'🏦', label:'RuKassa',     desc:'Карта РФ, СБП · от $100' },
+              { v:'rukassa',     icon:'🏦', label:'RuKassa',     desc:`Карта РФ, СБП · от ${fmt(100)}` },
               { v:'cryptopay',   icon:'✈️', label:'CryptoPay',   desc:'Временно недоступно', disabled:true },
-              { v:'crystalpay',  icon:'💎', label:'CrystalPAY',  desc:'Карты РФ + крипта · от $1' },
-              { v:'nowpayments', icon:'🌍', label:'NOWPayments',  desc:'350+ крипт · от $1' },
+              { v:'crystalpay',  icon:'💎', label:'CrystalPAY',  desc:`Карты РФ + крипта · от ${fmt(1)}` },
+              { v:'nowpayments', icon:'🌍', label:'NOWPayments',  desc:`350+ крипт · от ${fmt(1)}` },
             ].map(m => (
               <button key={m.v} onClick={() => !m.disabled && setPayMethod(m.v)} style={{
                 padding:'14px 8px', borderRadius:14, cursor: m.disabled ? 'not-allowed' : 'pointer', textAlign:'center', border:'1.5px solid',
@@ -243,11 +244,11 @@ export default function WalletPage() {
             <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
               <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:10 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
               {[
-                ['💳', 'Visa / MC / МИР', '$100.00'],
-                ['💳', 'Visa / MC (AZN)', '$5.50'],
-                ['🎮', 'SkinPay', '$0.10'],
-                ['💛', 'YooMoney', '$11.00'],
-                ['🔐', 'Крипта (через RuKassa)', '$0.50'],
+                ['💳', 'Visa / MC / МИР', fmt(100)],
+                ['💳', 'Visa / MC (AZN)', fmt(5.5)],
+                ['🎮', 'SkinPay', fmt(0.1)],
+                ['💛', 'YooMoney', fmt(11)],
+                ['🔐', 'Крипта (через RuKassa)', fmt(0.5)],
               ].map(([icon, label, min]) => (
                 <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
                   <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
@@ -260,11 +261,11 @@ export default function WalletPage() {
             <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
               <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:8 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
               {[
-                ['💎','USDT (TRC20/ERC20)','$1.00'],
-                ['🔷','TON','$1.00'],
-                ['₿','BTC','$1.00'],
-                ['🔹','ETH','$1.00'],
-                ['🌐','350+ других криптовалют','$1.00'],
+                ['💎','USDT (TRC20/ERC20)', fmt(1)],
+                ['🔷','TON', fmt(1)],
+                ['₿','BTC', fmt(1)],
+                ['🔹','ETH', fmt(1)],
+                ['🌐','350+ других криптовалют', fmt(1)],
               ].map(([icon, label, min]) => (
                 <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
                   <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
@@ -277,10 +278,10 @@ export default function WalletPage() {
             <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
               <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:10 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
               {[
-                ['💳', 'Карты РФ (Visa/MC/МИР)', '$1.00'],
-                ['⚡', 'СБП (Система быстрых платежей)', '$1.00'],
-                ['💎', 'USDT / BTC / ETH / TON', '$1.00'],
-                ['🪙', 'Другие криптовалюты', '$1.00'],
+                ['💳', 'Карты РФ (Visa/MC/МИР)', fmt(1)],
+                ['⚡', 'СБП (Система быстрых платежей)', fmt(1)],
+                ['💎', 'USDT / BTC / ETH / TON', fmt(1)],
+                ['🪙', 'Другие криптовалюты', fmt(1)],
               ].map(([icon, label, min]) => (
                 <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
                   <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
@@ -293,10 +294,10 @@ export default function WalletPage() {
             <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
               <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:10 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
               {[
-                ['💎', 'USDT', '$2.00'],
-                ['🔷', 'TON', '$2.00'],
-                ['₿', 'BTC', '$2.00'],
-                ['🔹', 'ETH', '$2.00'],
+                ['💎', 'USDT', fmt(2)],
+                ['🔷', 'TON', fmt(2)],
+                ['₿', 'BTC', fmt(2)],
+                ['🔹', 'ETH', fmt(2)],
               ].map(([icon, label, min]) => (
                 <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
                   <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
@@ -315,12 +316,12 @@ export default function WalletPage() {
                 background: amount===String(v) ? 'rgba(245,200,66,0.12)' : 'var(--bg3)',
                 borderColor: amount===String(v) ? 'rgba(245,200,66,0.4)' : 'var(--border)',
                 color: amount===String(v) ? 'var(--accent)' : 'var(--t2)',
-              }}>${v}</button>
+              }}>{fmt(v)}</button>
             ))}
           </div>
 
           {/* Ввод суммы */}
-          <input className="inp" type="number" inputMode="decimal" placeholder="Минимум $2" min="2" value={amount}
+          <input className="inp" type="number" inputMode="decimal" placeholder={`Минимум ${fmt(2)}`} min="2" value={amount}
             onChange={e => setAmount(e.target.value)}
             style={{ marginBottom:12, fontSize:22, fontFamily:'var(--font-h)', fontWeight:800, textAlign:'center', height:56 }}/>
 
@@ -333,16 +334,16 @@ export default function WalletPage() {
               <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.15)', borderRadius:14, padding:'14px 16px', marginBottom:16 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
                   <span style={{ fontSize:14, color:'var(--t3)' }}>Сумма оплаты</span>
-                  <span style={{ fontSize:14, fontWeight:700 }}>${amt.toFixed(2)}</span>
+                  <span style={{ fontSize:14, fontWeight:700 }}>{fmt(amt)}</span>
                 </div>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
                   <span style={{ fontSize:14, color:'var(--t3)' }}>Комиссия {payMethod === 'rukassa' ? 'RuKassa (~4%)' : payMethod === 'crystalpay' ? 'CrystalPAY (~3%)' : 'CryptoPay (~1%)'}</span>
-                  <span style={{ fontSize:14, color:'var(--red)' }}>−${fee.toFixed(2)}</span>
+                  <span style={{ fontSize:14, color:'var(--red)' }}>−{fmt(fee)}</span>
                 </div>
                 <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
                 <div style={{ display:'flex', justifyContent:'space-between' }}>
                   <span style={{ fontSize:15, fontWeight:700 }}>Получите на баланс</span>
-                  <span style={{ fontSize:16, fontWeight:800, color:'var(--green)' }}>${receive.toFixed(2)}</span>
+                  <span style={{ fontSize:16, fontWeight:800, color:'var(--green)' }}>{fmt(receive)}</span>
                 </div>
               </div>
             )
@@ -350,7 +351,7 @@ export default function WalletPage() {
 
           <button className="btn btn-primary btn-full" style={{ height:52, fontSize:16, borderRadius:14 }}
             onClick={deposit} disabled={working || parseFloat(amount) < 2}>
-            {working ? <Spinner/> : `↓ Пополнить${parseFloat(amount) >= 2 ? ' $' + parseFloat(amount).toFixed(2) : ''}`}
+            {working ? <Spinner/> : `↓ Пополнить${parseFloat(amount) >= 2 ? ' ' + fmt(parseFloat(amount)) : ''}`}
           </button>
         </BottomSheet>
       )}
@@ -379,8 +380,8 @@ export default function WalletPage() {
             ))}
           </div>
           <div style={{ background:'var(--bg3)', borderRadius:12, padding:'10px 14px', marginBottom:14, fontSize:12, color:'var(--t3)', lineHeight:1.6 }}>
-            {withdrawMethod === 'cryptobot' && <>🤖 Вывод через <b style={{color:'var(--t2)'}}>CryptoBot</b> в USDT · Минимум $5 · До 24ч</>}
-            {withdrawMethod === 'sbp'       && <>⚡ Вывод через <b style={{color:'var(--t2)'}}>СБП</b> на любой банк · Курс ~{Math.round(parseFloat(amount||0)*90) || '90/USD'} RUB · До 24ч</>}
+            {withdrawMethod === 'cryptobot' && <>🤖 Вывод через <b style={{color:'var(--t2)'}}>CryptoBot</b> в USDT · Минимум {fmt(5)} · До 24ч</>}
+            {withdrawMethod === 'sbp'       && <>⚡ Вывод через <b style={{color:'var(--t2)'}}>СБП</b> на любой банк · Курс ~{Math.round(parseFloat(amount||0)*rate) || `${Math.round(rate)}/USD`} ₽ · До 24ч</>}
             {withdrawMethod === 'card'      && <>💳 Вывод на <b style={{color:'var(--t2)'}}>банковскую карту</b> · Visa/МИР · До 24ч</>}
           </div>
 
@@ -393,13 +394,13 @@ export default function WalletPage() {
                 background: amount===String(v) ? 'rgba(245,200,66,0.12)' : 'var(--bg3)',
                 borderColor: amount===String(v) ? 'rgba(245,200,66,0.4)' : 'var(--border)',
                 color: amount===String(v) ? 'var(--accent)' : 'var(--t2)',
-              }}>${v}</button>
+              }}>{fmt(v)}</button>
             ))}
           </div>
 
           {/* Ввод суммы */}
           <input className="inp" type="number" inputMode="decimal"
-            placeholder={`Сумма (доступно $${bal.toFixed(2)})`}
+            placeholder={`Сумма (доступно ${fmt(bal)})`}
             value={amount} onChange={e => setAmount(e.target.value)}
             style={{ marginBottom:12, fontFamily:'var(--font-h)', fontWeight:800, textAlign:'center', fontSize:20, height:54 }}/>
 
@@ -412,16 +413,16 @@ export default function WalletPage() {
               <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.15)', borderRadius:14, padding:'14px 16px', marginBottom:14 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
                   <span style={{ fontSize:14, color:'var(--t3)' }}>Сумма вывода</span>
-                  <span style={{ fontSize:14, fontWeight:700 }}>${amt.toFixed(2)}</span>
+                  <span style={{ fontSize:14, fontWeight:700 }}>{fmt(amt)}</span>
                 </div>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
                   <span style={{ fontSize:14, color:'var(--t3)' }}>Комиссия платформы (5%)</span>
-                  <span style={{ fontSize:14, color:'var(--red)' }}>−${fee.toFixed(2)}</span>
+                  <span style={{ fontSize:14, color:'var(--red)' }}>−{fmt(fee)}</span>
                 </div>
                 <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
                 <div style={{ display:'flex', justifyContent:'space-between' }}>
                   <span style={{ fontSize:15, fontWeight:700 }}>Получите</span>
-                  <span style={{ fontSize:16, fontWeight:800, color:'var(--green)' }}>${receive.toFixed(2)}</span>
+                  <span style={{ fontSize:16, fontWeight:800, color:'var(--green)' }}>{fmt(receive)}</span>
                 </div>
               </div>
             )
@@ -440,13 +441,13 @@ export default function WalletPage() {
 
           <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.15)', borderRadius:12, padding:'10px 14px', marginBottom:16, fontSize:12, color:'var(--t3)', lineHeight:1.6 }}>
             {withdrawMethod === 'cryptobot' && <>Откройте <a href="https://t.me/CryptoBot" target="_blank" rel="noopener" style={{color:'var(--accent)'}}>@CryptoBot</a> в Telegram → Получить → скопируйте адрес USDT.</>}
-            {withdrawMethod === 'sbp'       && <>Введите номер телефона привязанный к СБП. Деньги придут в рублях по курсу ~90 RUB/USD.</>}
-            {withdrawMethod === 'card'      && <>Введите 16 цифр номера карты (Visa, МИР). Deньги придут в рублях по курсу ~90 RUB/USD.</>}
+            {withdrawMethod === 'sbp'       && <>Введите номер телефона привязанный к СБП. Деньги придут в рублях по курсу ~{Math.round(rate)} ₽/USD.</>}
+            {withdrawMethod === 'card'      && <>Введите 16 цифр номера карты (Visa, МИР). Деньги придут в рублях по курсу ~{Math.round(rate)} ₽/USD.</>}
           </div>
 
           <button className="btn btn-primary btn-full" style={{ height:52, fontSize:16, borderRadius:14 }}
             onClick={withdraw} disabled={working}>
-            {working ? <Spinner/> : `↑ Вывести${parseFloat(amount) >= 5 ? ' $' + parseFloat(amount).toFixed(2) : ''}`}
+            {working ? <Spinner/> : `↑ Вывести${parseFloat(amount) >= 5 ? ' ' + fmt(parseFloat(amount)) : ''}`}
           </button>
         </BottomSheet>
       )}
