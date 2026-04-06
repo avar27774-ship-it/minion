@@ -1,186 +1,186 @@
-import React, { useEffect, useRef, useCallback, useMemo } from 'react';
-import './ProfileCard.css';
+import React, { useState, useEffect, useCallback } from 'react'
+import useMeta from '../hooks/useMeta'
+import { Gamepad2, Coins, Sword, Palette, KeyRound, Star, Rocket, Package, Search } from '../components/Icon'
+import DarkVeil from '../components/DarkVeil/DarkVeil'
+import { useSearchParams } from 'react-router-dom'
+import { useRef } from 'react'
+import { api } from '../store'
+import ProductCard from '../components/ProductCard'
+import { useCurrency } from '../hooks/useCurrency'
 
-const ANIM = { INIT_MS: 1200, INIT_X: 70, INIT_Y: 60, BETA_OFFSET: 20, ENTER_MS: 180 };
-const clamp  = (v, mn = 0, mx = 100) => Math.min(Math.max(v, mn), mx);
-const rnd    = (v, p = 3) => parseFloat(v.toFixed(p));
-const adjust = (v, fMn, fMx, tMn, tMx) => rnd(tMn + ((tMx - tMn) * (v - fMn)) / (fMx - fMn));
+const CATEGORIES = [
+  { slug:'', name:'Все' },
+  { slug:'game-accounts', name:'Аккаунты', icon: <Gamepad2 size={18} strokeWidth={1.5}/> },
+  { slug:'game-currency', name:'Валюта', icon: <Coins size={18} strokeWidth={1.5}/> },
+  { slug:'items', name:'Предметы', icon: <Sword size={18} strokeWidth={1.5}/> },
+  { slug:'skins', name:'Скины', icon: <Palette size={18} strokeWidth={1.5}/> },
+  { slug:'keys', name:'Ключи', icon: <KeyRound size={18} strokeWidth={1.5}/> },
+  { slug:'subscriptions', name:'Подписки', icon: <Star size={18} strokeWidth={1.5}/> },
+  { slug:'boost', name:'Буст', icon: <Rocket size={18} strokeWidth={1.5}/> },
+  { slug:'other', name:'Прочее', icon: <Package size={18} strokeWidth={1.5}/> },
+]
+const SORTS = [{ v:'newest',label:'Новые' },{ v:'price_asc',label:'Дешевле' },{ v:'price_desc',label:'Дороже' },{ v:'popular',label:'Популярные' }]
 
-export default function ProfileCard({
-  avatarUrl = '', iconUrl = '', grainUrl = '',
-  innerGradient, behindGlowEnabled = true, behindGlowColor, behindGlowSize,
-  className = '', enableTilt = true, enableMobileTilt = false, mobileTiltSensitivity = 5,
-  miniAvatarUrl, name = '', title = '', handle = '', status = 'Online',
-  contactText = 'Contact', showUserInfo = true, onContactClick
-}) {
-  const wrapRef      = useRef(null);
-  const shellRef     = useRef(null);
-  const enterTimer   = useRef(null);
-  const leaveRaf     = useRef(null);
+export default function CatalogPage() {
+  const [sp, setSp] = useSearchParams()
+  const [products, setProducts] = useState([])
+  const [total, setTotal]       = useState(0)
+  const [loading, setLoading]   = useState(true)
+  const [page, setPage]         = useState(1)
+  const { rate } = useCurrency()
 
-  const engine = useMemo(() => {
-    if (!enableTilt) return null;
-    let raf = null, running = false, lastTs = 0;
-    let cx = 0, cy = 0, tx = 0, ty = 0, initUntil = 0;
+  const category = sp.get('category') || ''
+  const search   = sp.get('search') || ''
+  const sort     = sp.get('sort') || 'newest'
+  const minPrice = sp.get('minPrice') || ''
+  const maxPrice = sp.get('maxPrice') || ''
 
-    const setVars = (x, y) => {
-      const sh = shellRef.current, wr = wrapRef.current;
-      if (!sh || !wr) return;
-      const w = sh.clientWidth || 1, h = sh.clientHeight || 1;
-      const px = clamp((100 / w) * x), py = clamp((100 / h) * y);
-      const vars = {
-        '--pc-pointer-x':        `${px}%`,
-        '--pc-pointer-y':        `${py}%`,
-        '--pc-background-x':     `${adjust(px, 0, 100, 35, 65)}%`,
-        '--pc-background-y':     `${adjust(py, 0, 100, 35, 65)}%`,
-        '--pc-pointer-from-center': `${clamp(Math.hypot(py-50, px-50)/50, 0, 1)}`,
-        '--pc-pointer-from-top': `${py/100}`,
-        '--pc-pointer-from-left':`${px/100}`,
-        '--pc-rotate-x':         `${rnd(-((px-50)/5))}deg`,
-        '--pc-rotate-y':         `${rnd((py-50)/4)}deg`,
-      };
-      for (const [k, v] of Object.entries(vars)) wr.style.setProperty(k, v);
-    };
+  const [searchInput, setSearchInput] = useState(search)
+  const [minP, setMinP] = useState(minPrice)
+  const [maxP, setMaxP] = useState(maxPrice)
+  const searchRef = useRef(null)
 
-    const step = ts => {
-      if (!running) return;
-      if (!lastTs) lastTs = ts;
-      const dt = (ts - lastTs) / 1000; lastTs = ts;
-      const tau = ts < initUntil ? 0.6 : 0.14;
-      const k = 1 - Math.exp(-dt / tau);
-      cx += (tx - cx) * k; cy += (ty - cy) * k;
-      setVars(cx, cy);
-      if (Math.abs(tx-cx) > 0.05 || Math.abs(ty-cy) > 0.05 || document.hasFocus()) {
-        raf = requestAnimationFrame(step);
-      } else { running = false; lastTs = 0; cancelAnimationFrame(raf); raf = null; }
-    };
-    const start = () => { if (running) return; running = true; lastTs = 0; raf = requestAnimationFrame(step); };
-
-    return {
-      snap(x, y)       { cx = x; cy = y; setVars(cx, cy); },
-      aim(x, y)        { tx = x; ty = y; start(); },
-      center()         { const s = shellRef.current; if (s) this.aim(s.clientWidth/2, s.clientHeight/2); },
-      initAnim(ms)     { initUntil = performance.now() + ms; start(); },
-      pos()            { return { cx, cy, tx, ty }; },
-      stop()           { if (raf) cancelAnimationFrame(raf); raf = null; running = false; lastTs = 0; },
-    };
-  }, [enableTilt]);
-
-  const offs  = (e, el) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
-
-  const onMove  = useCallback(e => { const s = shellRef.current; if (!s || !engine) return; const o = offs(e, s); engine.aim(o.x, o.y); }, [engine]);
-  const onEnter = useCallback(e => {
-    const s = shellRef.current; if (!s || !engine) return;
-    s.classList.add('active', 'entering');
-    clearTimeout(enterTimer.current);
-    enterTimer.current = setTimeout(() => s.classList.remove('entering'), ANIM.ENTER_MS);
-    const o = offs(e, s); engine.aim(o.x, o.y);
-  }, [engine]);
-  const onLeave = useCallback(() => {
-    const s = shellRef.current; if (!s || !engine) return;
-    engine.center();
-    const check = () => {
-      const { cx, cy, tx, ty } = engine.pos();
-      if (Math.hypot(tx-cx, ty-cy) < 0.6) { s.classList.remove('active'); leaveRaf.current = null; }
-      else leaveRaf.current = requestAnimationFrame(check);
-    };
-    cancelAnimationFrame(leaveRaf.current);
-    leaveRaf.current = requestAnimationFrame(check);
-  }, [engine]);
-  const onOrient = useCallback(e => {
-    const s = shellRef.current; if (!s || !engine) return;
-    const { beta, gamma } = e; if (beta == null) return;
-    engine.aim(
-      clamp(s.clientWidth/2  + gamma * mobileTiltSensitivity, 0, s.clientWidth),
-      clamp(s.clientHeight/2 + (beta - ANIM.BETA_OFFSET) * mobileTiltSensitivity, 0, s.clientHeight)
-    );
-  }, [engine, mobileTiltSensitivity]);
-
+  // Автофокус на поиске если пришли с кнопки Поиск
   useEffect(() => {
-    if (!enableTilt || !engine) return;
-    const s = shellRef.current; if (!s) return;
-    s.addEventListener('pointerenter', onEnter);
-    s.addEventListener('pointermove',  onMove);
-    s.addEventListener('pointerleave', onLeave);
-    const onClick = () => {
-      if (!enableMobileTilt) return;
-      if (window.DeviceMotionEvent?.requestPermission) {
-        window.DeviceMotionEvent.requestPermission().then(st => { if (st === 'granted') window.addEventListener('deviceorientation', onOrient); });
-      } else window.addEventListener('deviceorientation', onOrient);
-    };
-    s.addEventListener('click', onClick);
-    engine.snap((s.clientWidth || 0) - ANIM.INIT_X, ANIM.INIT_Y);
-    engine.center();
-    engine.initAnim(ANIM.INIT_MS);
-    return () => {
-      s.removeEventListener('pointerenter', onEnter);
-      s.removeEventListener('pointermove',  onMove);
-      s.removeEventListener('pointerleave', onLeave);
-      s.removeEventListener('click', onClick);
-      window.removeEventListener('deviceorientation', onOrient);
-      clearTimeout(enterTimer.current);
-      cancelAnimationFrame(leaveRaf.current);
-      engine.stop();
-    };
-  }, [enableTilt, enableMobileTilt, engine, onMove, onEnter, onLeave, onOrient]);
+    if (sp.get('focus') === 'search' && searchRef.current) {
+      searchRef.current.focus()
+      searchRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [])
 
-  const wrapStyle = {
-    '--pc-icon':             iconUrl  ? `url(${iconUrl})`  : 'none',
-    '--pc-grain':            grainUrl ? `url(${grainUrl})` : 'none',
-    '--pc-inner-gradient':   innerGradient ?? 'linear-gradient(145deg,#60496e8c 0%,#71C4FF44 100%)',
-    '--pc-behind-glow-color':behindGlowColor ?? 'rgba(125,190,255,0.67)',
-    '--pc-behind-glow-size': behindGlowSize  ?? '50%',
-  };
+  useMeta({
+    title: 'Каталог товаров — игровые аккаунты, валюта, предметы',
+    description: 'Каталог цифровых товаров на Minions Market. Игровые аккаунты, внутриигровая валюта, скины, ключи и буст от проверенных продавцов.',
+    keywords: 'каталог игровых товаров, аккаунты игр, игровая валюта купить, скины купить',
+  })
 
-  const initial = (name || handle || '?')[0].toUpperCase();
+  const r = rate || 90
+
+  const load = useCallback(async (p=1) => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ limit:20, page:p, sort })
+      if (category) params.set('category', category)
+      if (search)   params.set('search', search)
+      // Конвертируем рубли в USD для фильтрации на сервере
+      if (minPrice) params.set('minPrice', (parseFloat(minPrice) / r).toFixed(4))
+      if (maxPrice) params.set('maxPrice', (parseFloat(maxPrice) / r).toFixed(4))
+      const { data } = await api.get('/products?' + params)
+      if (p===1) setProducts(data.products||[])
+      else setProducts(prev => [...prev, ...(data.products||[])])
+      setTotal(data.total||0)
+    } catch {}
+    setLoading(false)
+  }, [category, search, sort, minPrice, maxPrice, r])
+
+  useEffect(() => { setPage(1); load(1) }, [load])
+
+  const applySearch = () => {
+    const ns = new URLSearchParams(sp)
+    if (searchInput) ns.set('search', searchInput); else ns.delete('search')
+    if (minP) ns.set('minPrice', minP); else ns.delete('minPrice')
+    if (maxP) ns.set('maxPrice', maxP); else ns.delete('maxPrice')
+    setSp(ns)
+  }
 
   return (
-    <div ref={wrapRef} className={`pc-card-wrapper ${className}`.trim()} style={wrapStyle}>
-      {behindGlowEnabled && <div className="pc-behind" />}
-      <div ref={shellRef} className="pc-card-shell">
-        <section className="pc-card">
-          <div className="pc-inside">
-            <div className="pc-shine" />
-            <div className="pc-glare" />
-
-            {/* Аватар / заглушка */}
-            <div className="pc-content pc-avatar-content">
-              {avatarUrl
-                ? <img className="avatar" src={avatarUrl} alt={name} loading="lazy" onError={e => e.target.style.display='none'} />
-                : <div className="pc-avatar-placeholder">{initial}</div>
-              }
-
-              {showUserInfo && (
-                <div className="pc-user-info">
-                  <div className="pc-user-details">
-                    <div className="pc-mini-avatar">
-                      {(miniAvatarUrl || avatarUrl)
-                        ? <img src={miniAvatarUrl || avatarUrl} alt="" loading="lazy" />
-                        : <div className="pc-mini-avatar-placeholder">{initial}</div>
-                      }
-                    </div>
-                    <div className="pc-user-text">
-                      <div className="pc-handle">@{handle}</div>
-                      <div className="pc-status">{status}</div>
-                    </div>
-                  </div>
-                  <button className="pc-contact-btn" onClick={onContactClick} type="button" style={{ pointerEvents:'auto' }}>
-                    {contactText}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Имя / подпись */}
-            <div className="pc-content">
-              <div className="pc-details">
-                <h3>{name}</h3>
-                <p>{title}</p>
-              </div>
-            </div>
-          </div>
-        </section>
+    <div style={{ position:'relative', minHeight:'var(--app-height)', overflow:'hidden' }}>
+      {/* DarkVeil фон */}
+      <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
+        <DarkVeil
+          hueShift={0}
+          noiseIntensity={0}
+          scanlineIntensity={0}
+          speed={2}
+          scanlineFrequency={0}
+          warpAmount={0}
+        />
       </div>
+
+      {/* Контент поверх */}
+      <div style={{ position:'relative', zIndex:1, maxWidth:1200, margin:'0 auto', padding:'24px 12px' }}>
+      <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:32, marginBottom:24 }}>Каталог</h1>
+
+      {/* Строка поиска */}
+      <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+        <input
+          ref={searchRef}
+          className="inp"
+          placeholder="Поиск товаров..."
+          value={searchInput}
+          onChange={e => {
+            setSearchInput(e.target.value)
+            clearTimeout(window._searchTimer)
+            window._searchTimer = setTimeout(() => {
+              const ns = new URLSearchParams(sp)
+              if (e.target.value) ns.set('search', e.target.value)
+              else ns.delete('search')
+              setSp(ns)
+            }, 500)
+          }}
+          onKeyDown={e => e.key === 'Enter' && applySearch()}
+          style={{ flex:1, fontSize:15 }}
+        />
+        <button className="btn btn-primary" onClick={applySearch} style={{ flexShrink:0, padding:'0 18px' }}>
+          Найти
+        </button>
+      </div>
+
+      {/* Фильтр по цене */}
+      <div style={{ display:'flex', gap:8, marginBottom:20 }}>
+        <input className="inp" placeholder="₽ от" value={minP} onChange={e => setMinP(e.target.value)}
+          style={{ flex:1 }} onKeyDown={e => e.key === 'Enter' && applySearch()}/>
+        <input className="inp" placeholder="₽ до" value={maxP} onChange={e => setMaxP(e.target.value)}
+          style={{ flex:1 }} onKeyDown={e => e.key === 'Enter' && applySearch()}/>
+      </div>
+
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:20 }}>
+        {CATEGORIES.map(c => (
+          <button key={c.slug} onClick={() => { const ns=new URLSearchParams(sp); if(c.slug) ns.set('category',c.slug); else ns.delete('category'); setSp(ns) }} style={{
+            padding:'8px 16px', borderRadius:100, border:'1px solid', cursor:'pointer', fontSize:13, fontWeight:600, transition:'all 0.15s',
+            background: category===c.slug ? 'rgba(245,200,66,0.15)' : 'var(--bg2)',
+            borderColor: category===c.slug ? 'rgba(245,200,66,0.5)' : 'var(--border)',
+            color: category===c.slug ? 'var(--accent)' : 'var(--t2)',
+          }}>{c.icon} {c.name}</button>
+        ))}
+      </div>
+
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+        <span style={{ color:'var(--t3)', fontSize:13 }}>{loading ? '...' : `${total} товаров`}</span>
+        <div style={{ display:'flex', gap:6 }}>
+          {SORTS.map(s => (
+            <button key={s.v} onClick={() => { const ns=new URLSearchParams(sp); ns.set('sort',s.v); setSp(ns) }} style={{
+              padding:'6px 14px', borderRadius:8, border:'1px solid', cursor:'pointer', fontSize:12, fontWeight:600, transition:'all 0.15s',
+              background: sort===s.v ? 'rgba(245,200,66,0.12)' : 'transparent',
+              borderColor: sort===s.v ? 'rgba(245,200,66,0.4)' : 'var(--border)',
+              color: sort===s.v ? 'var(--accent)' : 'var(--t3)',
+            }}>{s.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {loading && page===1 ? (
+        <div className="grid-4">{Array(8).fill(0).map((_,i) => <div key={i} className="skel" style={{ height:280 }}/>)}</div>
+      ) : products.length===0 ? (
+        <div style={{ textAlign:'center', padding:'80px 20px', color:'var(--t3)' }}>
+          <Search size={48} strokeWidth={1} style={{marginBottom:16, opacity:0.35}}/>
+          <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:20 }}>Товары не найдены</div>
+          <p style={{ color:'var(--t4)', marginTop:8 }}>Попробуйте изменить фильтры</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid-4">
+            {products.map((p,i) => <ProductCard key={p._id||p.id} product={p} style={{ animationDelay:`${i*30}ms` }}/>)}
+          </div>
+          {products.length < total && (
+            <div style={{ textAlign:'center', marginTop:32 }}>
+              <button className="btn btn-secondary" onClick={() => { const np=page+1; setPage(np); load(np) }} disabled={loading}>
+                {loading ? 'Загрузка...' : 'Загрузить ещё'}
+              </button>
+            </div>
+          )}
+        </>
+      )}</div>
     </div>
-  );
+  )
 }
