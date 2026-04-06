@@ -311,9 +311,16 @@ router.post('/tg-webapp', async (req, res) => {
       const baseUsername = (firstName || 'user') + '_' + tgId.slice(-4);
       let username = baseUsername.slice(0, 24);
 
-      // Проверяем уникальность
+      // FIX: было только два варианта username — если оба заняты, INSERT падал с ошибкой.
+      // Теперь перебираем до уникального через суффикс.
       const exists = await queryOne('SELECT id FROM users WHERE username = $1', [username]);
-      if (exists) username = 'tg' + tgId.slice(-8);
+      if (exists) {
+        const fallback = 'tg' + tgId.slice(-8);
+        const fallbackExists = await queryOne('SELECT id FROM users WHERE username = $1', [fallback]);
+        username = fallbackExists
+          ? 'tg' + tgId + '_' + Math.floor(Math.random() * 1000)
+          : fallback;
+      }
 
       const userId = require('crypto').randomUUID();
       await run(
