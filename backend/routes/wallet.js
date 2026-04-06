@@ -461,19 +461,31 @@ router.post('/webhook/crystalpay', async (req, res) => {
 // ── Internal: creditUser ───────────────────────────────────────────────────────
 async function creditUser(tx) {
   await transaction(async (client) => {
+    // FIX: блокируем транзакцию через SELECT FOR UPDATE внутри транзакции,
+    // чтобы исключить двойное зачисление при параллельных вебхуках.
+    const txRes = await client.query(
+      `SELECT * FROM transactions WHERE id = $1 FOR UPDATE`,
+      [tx.id]
+    );
+    const lockedTx = txRes.rows[0];
+    if (!lockedTx || lockedTx.status === 'completed') return; // уже обработано
+
     const userRes = await client.query('SELECT * FROM users WHERE id = $1', [tx.user_id]);
     const user    = userRes.rows[0];
-    const newBal  = parseFloat(user.balance) + parseFloat(tx.amount);
 
-    await client.query(
-      `UPDATE users SET balance = $1, total_deposited = total_deposited + $2 WHERE id = $3`,
-      [newBal, parseFloat(tx.amount), tx.user_id]
+    // FIX: атомарное обновление баланса через balance + $1, а не чтение-вычисление-запись.
+    // Это защищает от race condition при параллельных операциях с балансом.
+    const updRes = await client.query(
+      `UPDATE users SET balance = balance + $1, total_deposited = total_deposited + $1 WHERE id = $2 RETURNING balance`,
+      [parseFloat(tx.amount), tx.user_id]
     );
+    const newBal = parseFloat(updRes.rows[0].balance);
+
     await client.query(
       `UPDATE transactions SET status = 'completed', balance_before = $1, balance_after = $2 WHERE id = $3`,
       [user.balance, newBal, tx.id]
     );
-    notify.notifyDeposit({ ...user, balance: newBal }, tx.amount, tx.gateway_type, tx.gateway_type).catch(() => {});
+    notify.notifyDeposit({ ...user, balance: newBal }, tx.amount, tx.gateway_type, tx.id).catch(() => {});
     broadcast('deposit_completed', {
       userId: tx.user_id,
       username: user.username,
