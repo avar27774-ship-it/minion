@@ -3,6 +3,7 @@ import { Wallet, Handshake, FileText, RotateCcw, Mail, Zap, UserCircle, LogOut, 
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useStore, api } from '../store'
 import { useCurrency } from '../hooks/useCurrency'
+import Radio from './Radio'
 
 // ── Иконки для нижней навигации ────────────────────────────────────────────────
 const IconHome     = () => <Home size={22} strokeWidth={1.75}/>
@@ -68,15 +69,11 @@ export default function Layout({ children }) {
     if (token && !user) {
       api.get('/auth/me').then(r => setUser(r.data.user || r.data)).catch(() => localStorage.removeItem('mn_token'))
     } else if (token && user) {
-      // Обновляем баланс сразу при загрузке
       refreshUser()
     }
     const onScroll = () => setScrolled(window.scrollY > 20)
     window.addEventListener('scroll', onScroll)
-
-    // Обновляем баланс каждые 30 секунд
     const interval = setInterval(() => { refreshUser() }, 30000)
-
     return () => {
       window.removeEventListener('scroll', onScroll)
       clearInterval(interval)
@@ -88,14 +85,12 @@ export default function Layout({ children }) {
     setMobileMenu(false)
   }, [location.pathname])
 
-  // Закрывать мобильное меню по ESC
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') setMobileMenu(false) }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
-  // Блокировать скролл когда открыто мобильное меню
   useEffect(() => {
     document.body.style.overflow = mobileMenu ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
@@ -188,54 +183,29 @@ export default function Layout({ children }) {
                         animation:'fadeUp 0.2s ease',
                         display:'flex', flexDirection:'column',
                       }}>
-                        {/* Шапка дропдауна */}
                         <div style={{
                           display:'flex', alignItems:'center', justifyContent:'space-between',
-                          padding:'14px 16px', borderBottom:'1px solid var(--border)',
-                          flexShrink:0,
+                          padding:'14px 16px', borderBottom:'1px solid var(--border)', flexShrink:0,
                         }}>
-                          <span style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:15 }}>
-                            🔔 Уведомления
-                          </span>
+                          <span style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:15 }}>🔔 Уведомления</span>
                           <div style={{ display:'flex', gap:8 }}>
                             {notifs.length > 0 && (
-                              <button onClick={clearAll} style={{
-                                fontSize:11, color:'var(--t4)', background:'none',
-                                border:'none', cursor:'pointer', padding:'2px 6px',
-                                borderRadius:6,
-                              }}>
-                                Очистить
-                              </button>
+                              <button onClick={clearAll} style={{ fontSize:11, color:'var(--t4)', background:'none', border:'none', cursor:'pointer', padding:'2px 6px', borderRadius:6 }}>Очистить</button>
                             )}
                             {unread > 0 && (
-                              <button onClick={markAllRead} style={{
-                                fontSize:11, color:'var(--accent)', background:'none',
-                                border:'none', cursor:'pointer', padding:'2px 6px',
-                                borderRadius:6,
-                              }}>
-                                Прочитать все
-                              </button>
+                              <button onClick={markAllRead} style={{ fontSize:11, color:'var(--accent)', background:'none', border:'none', cursor:'pointer', padding:'2px 6px', borderRadius:6 }}>Прочитать все</button>
                             )}
                           </div>
                         </div>
-
-                        {/* Список */}
                         <div style={{ overflow:'auto', flex:1 }}>
                           {notifs.length === 0 ? (
-                            <div style={{
-                              padding:'40px 20px', textAlign:'center',
-                              color:'var(--t4)', fontSize:13,
-                            }}>
+                            <div style={{ padding:'40px 20px', textAlign:'center', color:'var(--t4)', fontSize:13 }}>
                               <div style={{ fontSize:32, marginBottom:8 }}>🔕</div>
                               Уведомлений пока нет
                             </div>
                           ) : notifs.map(n => (
-                            <div
-                              key={n.id || n._id}
-                              onClick={() => {
-                                setNotifOpen(false)
-                                if (n.link) navigate(n.link)
-                              }}
+                            <div key={n.id || n._id}
+                              onClick={() => { setNotifOpen(false); if (n.link) navigate(n.link) }}
                               style={{
                                 display:'flex', gap:12, padding:'12px 16px',
                                 borderBottom:'1px solid var(--border)',
@@ -246,47 +216,13 @@ export default function Layout({ children }) {
                               onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)' }}
                               onMouseLeave={e => { e.currentTarget.style.background = n.is_read ? 'transparent' : 'rgba(245,200,66,0.04)' }}
                             >
-                              {/* Иконка */}
-                              <div style={{
-                                width:36, height:36, borderRadius:10, flexShrink:0,
-                                background:'var(--bg3)',
-                                display:'flex', alignItems:'center', justifyContent:'center',
-                                fontSize:18,
-                              }}>
-                                {n.icon || '🔔'}
-                              </div>
-
-                              {/* Текст */}
+                              <div style={{ width:36, height:36, borderRadius:10, flexShrink:0, background:'var(--bg3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>{n.icon || '🔔'}</div>
                               <div style={{ flex:1, minWidth:0 }}>
-                                <div style={{
-                                  fontSize:13, fontWeight: n.is_read ? 500 : 700,
-                                  color: n.is_read ? 'var(--t2)' : 'var(--t1)',
-                                  marginBottom:2,
-                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                                }}>
-                                  {n.title}
-                                </div>
-                                {n.body && (
-                                  <div style={{
-                                    fontSize:12, color:'var(--t3)', lineHeight:1.4,
-                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                                  }}>
-                                    {n.body}
-                                  </div>
-                                )}
-                                <div style={{ fontSize:11, color:'var(--t4)', marginTop:3 }}>
-                                  {timeAgo(n.createdAt || n.created_at)}
-                                </div>
+                                <div style={{ fontSize:13, fontWeight: n.is_read ? 500 : 700, color: n.is_read ? 'var(--t2)' : 'var(--t1)', marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{n.title}</div>
+                                {n.body && <div style={{ fontSize:12, color:'var(--t3)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{n.body}</div>}
+                                <div style={{ fontSize:11, color:'var(--t4)', marginTop:3 }}>{timeAgo(n.createdAt || n.created_at)}</div>
                               </div>
-
-                              {/* Точка непрочитанного */}
-                              {!n.is_read && (
-                                <div style={{
-                                  width:8, height:8, borderRadius:100,
-                                  background:'var(--accent)', flexShrink:0,
-                                  marginTop:4,
-                                }}/>
-                              )}
+                              {!n.is_read && <div style={{ width:8, height:8, borderRadius:100, background:'var(--accent)', flexShrink:0, marginTop:4 }}/>}
                             </div>
                           ))}
                         </div>
@@ -294,63 +230,61 @@ export default function Layout({ children }) {
                     </div>
                   )}
                 </div>
-                  <button onClick={() => setMenuOpen(!menuOpen)} style={{
-                    display:'flex', alignItems:'center', gap:8, padding:'6px 12px',
-                    background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10,
-                    cursor:'pointer', color:'var(--t1)',
-                  }}>
-                    <div style={{
-                      width:28, height:28, borderRadius:8,
-                      background:'linear-gradient(135deg,var(--purple),var(--accent))',
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      fontSize:12, fontWeight:700, fontFamily:'var(--font-h)', flexShrink:0
-                    }}>{avatar}</div>
-                    <span style={{ fontSize:13, fontWeight:600 }}>{user.username || user.firstName}</span>
-                    <span style={{ color:'var(--accent)', fontSize:12, fontWeight:700 }}>{fmt(user.balance||0)}</span>
-                  </button>
 
-                  {menuOpen && (
-                    <div onClick={() => setMenuOpen(false)} style={{ position:'fixed', inset:0, zIndex:50 }}>
-                      <div onClick={e => e.stopPropagation()} style={{
-                        position:'absolute', top:'calc(100% + 8px)', right:0,
-                        background:'var(--bg2)', border:'1px solid var(--border)',
-                        borderRadius:20, padding:8, minWidth:190,
-                        boxShadow:'0 16px 48px rgba(0,0,0,0.6)', zIndex:51,
-                        animation:'fadeUp 0.2s ease'
-                      }}>
-                        {[
-                          { to:'/profile', icon:'', label:'Профиль' },
-                          { to:'/wallet',  icon: <Wallet size={16} strokeWidth={1.75}/>, label:'Кошелёк' },
-                          { to:'/deals',   icon: <Handshake size={16} strokeWidth={1.75}/>, label:'Сделки' },
-                        ].map(item => (
-                          <Link key={item.to} to={item.to} style={{
-                            display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
-                            borderRadius:10, color:'var(--t2)', fontSize:14,
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.background='var(--bg3)'; e.currentTarget.style.color='var(--t1)' }}
-                          onMouseLeave={e => { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='var(--t2)' }}>
-                            <span>{item.icon}</span> {item.label}
-                          </Link>
-                        ))}
-                        {(user.isAdmin || user.isSubAdmin) && (
-                          <Link to="/admin" style={{
-                            display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
-                            borderRadius:10, color:'var(--accent)', fontSize:14
-                          }}>
-                            <Zap size={13} strokeWidth={2}/> Админка
-                          </Link>
-                        )}
-                        <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>
-                        <button onClick={() => { logout(); navigate('/') }} style={{
+                <button onClick={() => setMenuOpen(!menuOpen)} style={{
+                  display:'flex', alignItems:'center', gap:8, padding:'6px 12px',
+                  background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10,
+                  cursor:'pointer', color:'var(--t1)',
+                }}>
+                  <div style={{
+                    width:28, height:28, borderRadius:8,
+                    background:'linear-gradient(135deg,var(--purple),var(--accent))',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:12, fontWeight:700, fontFamily:'var(--font-h)', flexShrink:0
+                  }}>{avatar}</div>
+                  <span style={{ fontSize:13, fontWeight:600 }}>{user.username || user.firstName}</span>
+                  <span style={{ color:'var(--accent)', fontSize:12, fontWeight:700 }}>{fmt(user.balance||0)}</span>
+                </button>
+
+                {menuOpen && (
+                  <div onClick={() => setMenuOpen(false)} style={{ position:'fixed', inset:0, zIndex:50 }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                      position:'absolute', top:'calc(100% + 8px)', right:0,
+                      background:'var(--bg2)', border:'1px solid var(--border)',
+                      borderRadius:20, padding:8, minWidth:190,
+                      boxShadow:'0 16px 48px rgba(0,0,0,0.6)', zIndex:51,
+                      animation:'fadeUp 0.2s ease'
+                    }}>
+                      {[
+                        { to:'/profile', icon:'', label:'Профиль' },
+                        { to:'/wallet',  icon: <Wallet size={16} strokeWidth={1.75}/>, label:'Кошелёк' },
+                        { to:'/deals',   icon: <Handshake size={16} strokeWidth={1.75}/>, label:'Сделки' },
+                      ].map(item => (
+                        <Link key={item.to} to={item.to} style={{
                           display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
-                          borderRadius:10, color:'var(--red)', fontSize:14, background:'transparent',
-                          border:'none', cursor:'pointer', width:'100%', textAlign:'left'
-                        }}>
-                          <span>→</span> Выйти
-                        </button>
-                      </div>
+                          borderRadius:10, color:'var(--t2)', fontSize:14,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background='var(--bg3)'; e.currentTarget.style.color='var(--t1)' }}
+                        onMouseLeave={e => { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='var(--t2)' }}>
+                          <span>{item.icon}</span> {item.label}
+                        </Link>
+                      ))}
+                      {(user.isAdmin || user.isSubAdmin) && (
+                        <Link to="/admin" style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderRadius:10, color:'var(--accent)', fontSize:14 }}>
+                          <Zap size={13} strokeWidth={2}/> Админка
+                        </Link>
+                      )}
+                      <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>
+                      <button onClick={() => { logout(); navigate('/') }} style={{
+                        display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
+                        borderRadius:10, color:'var(--red)', fontSize:14, background:'transparent',
+                        border:'none', cursor:'pointer', width:'100%', textAlign:'left'
+                      }}>
+                        <span>→</span> Выйти
+                      </button>
                     </div>
-                  )}
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -391,19 +325,16 @@ export default function Layout({ children }) {
       {/* ── Mobile Sidebar Menu ───────────────────────────────────────────────── */}
       {mobileMenu && (
         <>
-          {/* Backdrop */}
           <div onClick={() => setMobileMenu(false)} style={{
             position:'fixed', inset:0, background:'rgba(0,0,0,0.7)',
             backdropFilter:'blur(8px)', zIndex:200, animation:'fadeIn 0.2s ease'
           }}/>
-          {/* Drawer */}
           <div style={{
             position:'fixed', top:0, right:0, bottom:0, width:'min(320px, 85vw)',
             background:'var(--bg2)', borderLeft:'1px solid var(--border)',
             zIndex:201, display:'flex', flexDirection:'column',
             animation:'slideIn 0.25s ease', overflowY:'auto',
           }}>
-            {/* Drawer header */}
             <div style={{ padding:'20px 20px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <span style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:16 }}>
                 Minions<span style={{ color:'var(--accent)' }}>.</span>Market
@@ -415,7 +346,6 @@ export default function Layout({ children }) {
               }}>✕</button>
             </div>
 
-            {/* User info */}
             {user && (
               <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--border)', background:'var(--bg3)' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:12 }}>
@@ -427,15 +357,12 @@ export default function Layout({ children }) {
                   }}>{avatar}</div>
                   <div>
                     <div style={{ fontWeight:700, fontSize:15 }}>@{user.username || user.firstName}</div>
-                    <div style={{ color:'var(--accent)', fontSize:13, fontWeight:700 }}>
-                      {fmt(user.balance||0)}
-                    </div>
+                    <div style={{ color:'var(--accent)', fontSize:13, fontWeight:700 }}>{fmt(user.balance||0)}</div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Nav links */}
             <div style={{ padding:'12px 12px', flex:1 }}>
               {[
                 { to:'/',        icon:'', label:'Главная' },
@@ -477,7 +404,6 @@ export default function Layout({ children }) {
               )}
             </div>
 
-            {/* Bottom actions */}
             <div style={{ padding:'12px 20px 24px', borderTop:'1px solid var(--border)' }}>
               {user ? (
                 <button onClick={() => { logout(); navigate('/'); setMobileMenu(false) }} style={{
@@ -547,6 +473,9 @@ export default function Layout({ children }) {
         </div>
       </footer>
 
+      {/* ── Онлайн радио (над навбаром) ──────────────────────────────────────── */}
+      <Radio/>
+
       {/* ── Mobile bottom navigation ──────────────────────────────────────────── */}
       <nav className="mobile-bottom-nav" style={{
         position:'fixed', bottom:0, left:0, right:0, zIndex:90,
@@ -558,10 +487,10 @@ export default function Layout({ children }) {
         boxShadow:'0 -4px 24px rgba(0,0,0,0.4)',
       }}>
         {[
-          { to:'/',        icon:<IconHome/>,      label:'Главная' },
-          { to:'/catalog', icon:<IconGrid/>,      label:'Каталог' },
-          { to:'/sell',    icon:<IconPlus/>,      label:'Продать', center:true },
-          { to:'/messages', icon:<IconMessages/>, label:'Чаты' },
+          { to:'/',         icon:<IconHome/>,      label:'Главная' },
+          { to:'/catalog',  icon:<IconGrid/>,      label:'Каталог' },
+          { to:'/sell',     icon:<IconPlus/>,      label:'Продать', center:true },
+          { to:'/messages', icon:<IconMessages/>,  label:'Чаты' },
           { to: user ? '/profile' : '/auth', icon:<IconProfile/>, label: user ? 'Профиль' : 'Войти' },
           { menu:true, label:'Меню' },
         ].map(item => (
@@ -574,56 +503,50 @@ export default function Layout({ children }) {
             }}>
               <div style={{
                 width:28, height:28, display:'flex', flexDirection:'column',
-                alignItems:'center', justifyContent:'center', gap:5,
-                borderRadius:8,
+                alignItems:'center', justifyContent:'center', gap:5, borderRadius:8,
                 background: mobileMenu ? 'rgba(245,200,66,0.12)' : 'transparent',
               }}>
                 <span style={{ width:14, height:2, background: mobileMenu ? 'var(--accent)' : 'var(--t3)', borderRadius:2, display:'block' }}/>
                 <span style={{ width:14, height:2, background: mobileMenu ? 'var(--accent)' : 'var(--t3)', borderRadius:2, display:'block' }}/>
                 <span style={{ width:10, height:2, background: mobileMenu ? 'var(--accent)' : 'var(--t3)', borderRadius:2, display:'block', alignSelf:'flex-start', marginLeft:2 }}/>
               </div>
-              <span style={{
-                fontSize:10, fontWeight:700, fontFamily:'var(--font-h)',
-                marginTop:1,
-                color: mobileMenu ? 'var(--accent)' : 'var(--t3)',
-              }}>Меню</span>
+              <span style={{ fontSize:10, fontWeight:700, fontFamily:'var(--font-h)', marginTop:1, color: mobileMenu ? 'var(--accent)' : 'var(--t3)' }}>Меню</span>
             </button>
           ) : (
-          <Link key={item.to} to={item.to} style={{
-            flex:1, display:'flex', flexDirection:'column', alignItems:'center',
-            justifyContent:'center', gap:3, padding:'8px 0', textDecoration:'none',
-            color: isActive(item.to) ? 'var(--accent)' : 'var(--t3)',
-            transition:'color 0.15s', position:'relative',
-          }}>
-            {item.center ? (
-              <div style={{
-                width:52, height:52, borderRadius:16,
-                background:'linear-gradient(135deg, var(--accent), #e8a020)',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                color:'#0d0d14', marginTop:-20,
-                boxShadow:'0 4px 24px rgba(245,200,66,0.5)',
-                border:'3px solid rgba(13,13,20,0.8)',
-              }}>
-                {item.icon}
-              </div>
-            ) : (
-              <>
+            <Link key={item.to} to={item.to} style={{
+              flex:1, display:'flex', flexDirection:'column', alignItems:'center',
+              justifyContent:'center', gap:3, padding:'8px 0', textDecoration:'none',
+              color: isActive(item.to) ? 'var(--accent)' : 'var(--t3)',
+              transition:'color 0.15s', position:'relative',
+            }}>
+              {item.center ? (
                 <div style={{
-                  width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center',
-                  borderRadius:8,
-                  background: isActive(item.to) ? 'rgba(245,200,66,0.12)' : 'transparent',
-                  transition:'background 0.2s',
+                  width:52, height:52, borderRadius:16,
+                  background:'linear-gradient(135deg, var(--accent), #e8a020)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  color:'#0d0d14', marginTop:-20,
+                  boxShadow:'0 4px 24px rgba(245,200,66,0.5)',
+                  border:'3px solid rgba(13,13,20,0.8)',
                 }}>
                   {item.icon}
                 </div>
-                <span style={{
-                  fontSize:10, fontWeight:700, fontFamily:'var(--font-h)',
-                  marginTop:1,
-                  color: isActive(item.to) ? 'var(--accent)' : 'var(--t3)',
-                }}>{item.label}</span>
-              </>
-            )}
-          </Link>
+              ) : (
+                <>
+                  <div style={{
+                    width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center',
+                    borderRadius:8,
+                    background: isActive(item.to) ? 'rgba(245,200,66,0.12)' : 'transparent',
+                    transition:'background 0.2s',
+                  }}>
+                    {item.icon}
+                  </div>
+                  <span style={{
+                    fontSize:10, fontWeight:700, fontFamily:'var(--font-h)', marginTop:1,
+                    color: isActive(item.to) ? 'var(--accent)' : 'var(--t3)',
+                  }}>{item.label}</span>
+                </>
+              )}
+            </Link>
           )
         ))}
       </nav>
@@ -631,12 +554,12 @@ export default function Layout({ children }) {
       {/* ── Responsive CSS ────────────────────────────────────────────────────── */}
       <style>{`
         @media (max-width: 768px) {
-          .desktop-nav    { display: none !important; }
+          .desktop-nav     { display: none !important; }
           .desktop-actions { display: none !important; }
           .mobile-header-right { display: flex !important; }
-          .mobile-bottom-nav { display: flex !important; }
-          .desktop-footer { display: none !important; }
-          .mobile-footer  { display: block !important; }
+          .mobile-bottom-nav   { display: flex !important; }
+          .desktop-footer  { display: none !important; }
+          .mobile-footer   { display: block !important; }
           header { padding-left: 12px !important; padding-right: 12px !important; }
           header > div { padding: 0 !important; }
         }
