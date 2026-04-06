@@ -37,21 +37,22 @@ function autoBanIp(ip, minutes, reason) {
 }
 
 // SQL-инъекции и известные паттерны атак
+// FIX: паттерны были слишком широкими и блокировали легитимные описания товаров
+// (например "please select item from list" или "insert into bag").
+// Теперь используем более точные сигнатуры SQL-инъекций.
 const ATTACK_PATTERNS = [
-  /(OR|AND)\s+[\d\w'"]+\s*=\s*[\d\w'"]+/i,  // OR 1=1, AND 'a'='a'
-  /union\s+select/i,
-  /select\s+.+\s+from/i,
-  /insert\s+into/i,
-  /drop\s+table/i,
-  /exec\s*\(/i,
-  /script\s*>/i,                                        // XSS
-  /<\s*script/i,
+  /'\s*(\bOR\b|\bAND\b)\s+[\d\w'"]+\s*=\s*[\d\w'"]+/i,  // ' OR 1=1 — только после кавычки
+  /union\s+all\s+select|union\s+select\s+null/i,          // UNION SELECT с типичными паттернами
+  /select\s+[\w\s,*]+\s+from\s+\w+\s+where/i,            // SELECT...FROM...WHERE — полная форма
+  /;\s*(drop|truncate|delete)\s+table/i,                   // ; DROP TABLE
+  /exec\s*\(\s*[@\w]/i,                                    // EXEC(@var)
+  /<\s*script[\s>]/i,                                      // XSS: <script>
   /javascript\s*:/i,
-  /\/etc\/passwd/i,                                     // Path traversal
+  /\/etc\/passwd/i,                                        // Path traversal
   /\.\.\/\.\.\/\.\.\//,
-  /eval\s*\(/i,
-  /base64_decode/i,
-  /wp-admin|phpmyadmin|\.env|\.git\/config/i,           // Сканирование
+  /\beval\s*\(\s*['"\`]/i,                                 // eval("...") — только со строкой
+  /base64_decode\s*\(/i,
+  /wp-admin|phpmyadmin|\.env$|\.git\/config/i,             // Сканирование
 ];
 
 function containsAttack(str) {
