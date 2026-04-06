@@ -183,6 +183,9 @@ router.post('/:id/deliver', auth, async (req, res) => {
     const seller  = await queryOne('SELECT username FROM users WHERE id = $1', [deal.seller_id]);
     const product = await queryOne('SELECT title FROM products WHERE id = $1', [deal.product_id]);
     if (buyer?.telegram_id) notify.notifyDelivered(buyer, product?.title || 'Товар', seller?.username || '?').catch(() => {});
+
+    // FIX: ответ был пропущен — клиент получал зависший запрос
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Ошибка' });
   }
@@ -396,10 +399,13 @@ async function completeDeal(deal, reason = 'auto') {
     const sellerAmount = parseFloat(deal.seller_amount);
     const amount       = parseFloat(deal.amount);
 
+    // FIX: продавец не имеет frozen_balance — его замораживал только покупатель.
+    // Продавцу просто начисляем баланс без изменения frozen_balance.
     await client.query(
-      `UPDATE users SET balance = balance + $1, frozen_balance = frozen_balance - $2, total_sales = total_sales + 1 WHERE id = $3`,
-      [sellerAmount, amount, deal.seller_id]
+      `UPDATE users SET balance = balance + $1, total_sales = total_sales + 1 WHERE id = $2`,
+      [sellerAmount, deal.seller_id]
     );
+    // FIX: у покупателя размораживаем ровно amount (сколько было заморожено при создании сделки).
     await client.query(
       `UPDATE users SET frozen_balance = frozen_balance - $1, total_purchases = total_purchases + 1 WHERE id = $2`,
       [amount, deal.buyer_id]
