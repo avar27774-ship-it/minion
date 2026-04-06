@@ -4,6 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useStore, api } from '../store'
 import { useCurrency } from '../hooks/useCurrency'
 import Radio from './Radio'
+import OnboardingBanner from './OnboardingBanner'
 
 // ── Иконки для нижней навигации ────────────────────────────────────────────────
 const IconHome     = () => <Home size={22} strokeWidth={1.75}/>
@@ -12,6 +13,7 @@ const IconGrid     = () => <LayoutGrid size={22} strokeWidth={1.75}/>
 const IconPlus     = () => <Plus size={26} strokeWidth={2.5}/>
 const IconMessages = () => <MessageCircle size={22} strokeWidth={1.75}/>
 const IconProfile  = () => <UserCircle size={22} strokeWidth={1.75}/>
+const IconDeals    = () => <Handshake size={22} strokeWidth={1.75}/>
 
 function timeAgo(date) {
   const sec = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
@@ -21,17 +23,35 @@ function timeAgo(date) {
   return `${Math.floor(sec/86400)} дн назад`
 }
 
+// ── Бейдж-пузырь ─────────────────────────────────────────────────────────────
+function Badge({ count }) {
+  if (!count || count === 0) return null
+  return (
+    <span style={{
+      position: 'absolute', top: -3, right: -3,
+      background: 'var(--red)', color: '#fff',
+      fontSize: 9, fontWeight: 800, fontFamily: 'var(--font-h)',
+      minWidth: 16, height: 16, borderRadius: 100,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      border: '2px solid rgba(13,13,20,0.98)', padding: '0 3px',
+    }}>
+      {count > 9 ? '9+' : count}
+    </span>
+  )
+}
+
 export default function Layout({ children }) {
   const { user, setUser, logout, refreshUser } = useStore()
   const navigate  = useNavigate()
   const location  = useLocation()
-  const [menuOpen,   setMenuOpen]   = useState(false)
-  const [radioOpen,  setRadioOpen]  = useState(false)
-  const [mobileMenu, setMobileMenu] = useState(false)
-  const [scrolled,   setScrolled]   = useState(false)
-  const [notifOpen,  setNotifOpen]  = useState(false)
-  const [notifs,     setNotifs]     = useState([])
-  const [unread,     setUnread]     = useState(0)
+  const [menuOpen,    setMenuOpen]    = useState(false)
+  const [radioOpen,   setRadioOpen]   = useState(false)
+  const [mobileMenu,  setMobileMenu]  = useState(false)
+  const [scrolled,    setScrolled]    = useState(false)
+  const [notifOpen,   setNotifOpen]   = useState(false)
+  const [notifs,      setNotifs]      = useState([])
+  const [unread,      setUnread]      = useState(0)
+  const [activeDeals, setActiveDeals] = useState(0)   // ← бейдж сделок
   const { fmt } = useCurrency()
 
   const loadNotifs = useCallback(async () => {
@@ -48,6 +68,28 @@ export default function Layout({ children }) {
     const t = setInterval(loadNotifs, 30000)
     return () => clearInterval(t)
   }, [loadNotifs])
+
+  // ── Активные сделки для бейджа ────────────────────────────────────────────
+  const loadActiveDeals = useCallback(async () => {
+    if (!user) return
+    try {
+      const r = await api.get('/deals?role=all')
+      const count = (r.data || []).filter(d =>
+        d.status === 'active' || d.status === 'disputed'
+      ).length
+      setActiveDeals(count)
+    } catch {}
+  }, [user])
+
+  useEffect(() => {
+    loadActiveDeals()
+    const t = setInterval(loadActiveDeals, 30000)
+    return () => clearInterval(t)
+  }, [loadActiveDeals])
+
+  useEffect(() => {
+    if (location.pathname === '/deals') loadActiveDeals()
+  }, [location.pathname])
 
   const markAllRead = async () => {
     try {
@@ -146,6 +188,18 @@ export default function Layout({ children }) {
             {user ? (
               <>
                 <Link to="/sell" className="btn btn-sm btn-secondary">+ Продать</Link>
+
+                {/* Бейдж активных сделок (десктоп) */}
+                {activeDeals > 0 && (
+                  <Link to="/deals" style={{
+                    display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
+                    borderRadius:10, background:'rgba(245,200,66,0.08)',
+                    border:'1px solid rgba(245,200,66,0.25)',
+                    color:'var(--accent)', fontSize:13, fontWeight:700, fontFamily:'var(--font-h)',
+                  }}>
+                    <Handshake size={15} strokeWidth={2}/> {activeDeals} активн.
+                  </Link>
+                )}
 
                 {/* Колокольчик уведомлений */}
                 <div style={{ position:'relative' }}>
@@ -257,9 +311,9 @@ export default function Layout({ children }) {
                       animation:'fadeUp 0.2s ease'
                     }}>
                       {[
-                        { to:'/profile', icon:'', label:'Профиль' },
-                        { to:'/wallet',  icon: <Wallet size={16} strokeWidth={1.75}/>, label:'Кошелёк' },
-                        { to:'/deals',   icon: <Handshake size={16} strokeWidth={1.75}/>, label:'Сделки' },
+                        { to:'/profile', icon:'👤', label:'Профиль' },
+                        { to:'/wallet',  icon:'💳', label:'Кошелёк' },
+                        { to:'/deals',   icon:'🤝', label:'Сделки', badge: activeDeals },
                       ].map(item => (
                         <Link key={item.to} to={item.to} style={{
                           display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
@@ -268,6 +322,9 @@ export default function Layout({ children }) {
                         onMouseEnter={e => { e.currentTarget.style.background='var(--bg3)'; e.currentTarget.style.color='var(--t1)' }}
                         onMouseLeave={e => { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='var(--t2)' }}>
                           <span>{item.icon}</span> {item.label}
+                          {item.badge > 0 && (
+                            <span style={{ marginLeft:'auto', background:'var(--red)', color:'#fff', fontSize:10, fontWeight:800, padding:'1px 6px', borderRadius:100 }}>{item.badge}</span>
+                          )}
                         </Link>
                       ))}
                       {(user.isAdmin || user.isSubAdmin) && (
@@ -366,19 +423,19 @@ export default function Layout({ children }) {
 
             <div style={{ padding:'12px 12px', flex:1 }}>
               {[
-                { to:'/',        icon:'', label:'Главная' },
-                { to:'/catalog', icon:'', label:'Каталог' },
+                { to:'/',        icon:'🏠', label:'Главная' },
+                { to:'/catalog', icon:'🛍', label:'Каталог' },
                 ...(user ? [
-                  { to:'/sell',    icon:'', label:'Продать' },
-                  { to:'/deals',   icon: <Handshake size={16} strokeWidth={1.75}/>, label:'Мои сделки' },
-                  { to:'/wallet',  icon: <Wallet size={16} strokeWidth={1.75}/>, label:'Кошелёк' },
-                  { to:'/profile', icon:'', label:'Профиль' },
+                  { to:'/sell',    icon:'📦', label:'Продать' },
+                  { to:'/deals',   icon:'🤝', label:'Мои сделки', badge: activeDeals },
+                  { to:'/wallet',  icon:'💳', label:'Кошелёк' },
+                  { to:'/profile', icon:'👤', label:'Профиль' },
                 ] : []),
-                { to:'/legal/rules',    icon: <FileText size={16} strokeWidth={1.75}/>, label:'Правила' },
-                { to:'/legal/offer',    icon: <FileText size={16} strokeWidth={1.75}/>, label:'Оферта' },
-                { to:'/legal/delivery', icon: <Mail size={16} strokeWidth={1.75}/>, label:'Доставка' },
-                { to:'/legal/refund',   icon: <RotateCcw size={16} strokeWidth={1.75}/>, label:'Возврат' },
-                { to:'/legal/contacts', icon: <Mail size={16} strokeWidth={1.75}/>, label:'Контакты' },
+                { to:'/legal/rules',    icon:'📋', label:'Правила' },
+                { to:'/legal/offer',    icon:'📄', label:'Оферта' },
+                { to:'/legal/delivery', icon:'🚚', label:'Доставка' },
+                { to:'/legal/refund',   icon:'↩️', label:'Возврат' },
+                { to:'/legal/contacts', icon:'✉️', label:'Контакты' },
               ].map(item => (
                 <Link key={item.to} to={item.to} style={{
                   display:'flex', alignItems:'center', gap:14, padding:'13px 12px',
@@ -387,9 +444,12 @@ export default function Layout({ children }) {
                   fontSize:15, fontWeight: isActive(item.to) ? 600 : 400,
                   marginBottom:2, transition:'all 0.15s',
                 }}>
-                  <span style={{ fontSize:20, width:24, textAlign:'center' }}>{item.icon}</span>
+                  <span style={{ fontSize:18, width:24, textAlign:'center' }}>{item.icon}</span>
                   {item.label}
-                  {isActive(item.to) && <span style={{ marginLeft:'auto', color:'var(--accent)', fontSize:12 }}>●</span>}
+                  {item.badge > 0
+                    ? <span style={{ marginLeft:'auto', background:'var(--red)', color:'#fff', fontSize:10, fontWeight:800, padding:'2px 7px', borderRadius:100 }}>{item.badge}</span>
+                    : isActive(item.to) && <span style={{ marginLeft:'auto', color:'var(--accent)', fontSize:12 }}>●</span>
+                  }
                 </Link>
               ))}
 
@@ -426,7 +486,13 @@ export default function Layout({ children }) {
       )}
 
       {/* ── Main content ─────────────────────────────────────────────────────── */}
-      <main style={{ flex:1 }}>{children}</main>
+      <main style={{ flex:1 }}>
+        {/* Онбординг для новых юзеров (только на главной и каталоге) */}
+        {(location.pathname === '/' || location.pathname === '/catalog') && (
+          <OnboardingBanner />
+        )}
+        {children}
+      </main>
 
       {/* ── Footer (desktop) ─────────────────────────────────────────────────── */}
       <footer style={{ borderTop:'1px solid var(--border)', padding:'32px 20px', background:'var(--bg)' }} className="desktop-footer">
@@ -491,7 +557,7 @@ export default function Layout({ children }) {
           { to:'/',         icon:<IconHome/>,      label:'Главная' },
           { to:'/catalog',  icon:<IconGrid/>,      label:'Каталог' },
           { to:'/sell',     icon:<IconPlus/>,      label:'Продать', center:true },
-          { to:'/messages', icon:<IconMessages/>,  label:'Чаты' },
+          { to:'/deals',    icon:<IconDeals/>,     label:'Сделки', badge: activeDeals },
           { to: user ? '/profile' : '/auth', icon:<IconProfile/>, label: user ? 'Профиль' : 'Войти' },
           { radio:true, label:'Радио' },
           { menu:true, label:'Меню' },
@@ -500,13 +566,9 @@ export default function Layout({ children }) {
             <button key="radio" onClick={() => setRadioOpen(true)} style={{
               flex:1, display:'flex', flexDirection:'column', alignItems:'center',
               justifyContent:'center', gap:3, padding:'8px 0',
-              background:'transparent', border:'none', cursor:'pointer',
-              color:'var(--t3)',
+              background:'transparent', border:'none', cursor:'pointer', color:'var(--t3)',
             }}>
-              <div style={{
-                width:28, height:28, display:'flex', alignItems:'center',
-                justifyContent:'center', borderRadius:8, fontSize:16,
-              }}>📻</div>
+              <div style={{ width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:8, fontSize:16 }}>📻</div>
               <span style={{ fontSize:10, fontWeight:700, fontFamily:'var(--font-h)', marginTop:1, color:'var(--t3)' }}>Радио</span>
             </button>
           ) : item.menu ? (
@@ -549,11 +611,13 @@ export default function Layout({ children }) {
                 <>
                   <div style={{
                     width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center',
-                    borderRadius:8,
+                    borderRadius:8, position:'relative',
                     background: isActive(item.to) ? 'rgba(245,200,66,0.12)' : 'transparent',
                     transition:'background 0.2s',
                   }}>
                     {item.icon}
+                    {/* ← БЕЙДЖ */}
+                    <Badge count={item.badge} />
                   </div>
                   <span style={{
                     fontSize:10, fontWeight:700, fontFamily:'var(--font-h)', marginTop:1,
