@@ -1,6 +1,8 @@
 import React, { useState, useEffect, Component } from 'react'
 import { Users, Package, Handshake, DollarSign, ShieldCheck, MessageCircle, CreditCard, Zap, Ban, CheckCircle, XCircle, UserCheck, Trash2, Send, BarChart2, AlertTriangle, RotateCcw, LogOut, Star, Clock, TrendingUp, Settings, Eye } from '../components/Icon'
 import toast from 'react-hot-toast'
+import { useCurrency } from '../hooks/useCurrency'
+import { getCachedRate } from '../utils/currency'
 
 const adminFetch = async (path, opts = {}) => {
   try {
@@ -48,7 +50,7 @@ function BarChart({ data, valueKey = 'vol', labelKey = 'day', color = 'var(--acc
     <div style={{ display:'flex', alignItems:'flex-end', gap:3, height:64 }}>
       {data.map((d, i) => (
         <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
-          <div title={`${d[labelKey]}: $${safe(d[valueKey]).toFixed(0)}`} style={{
+          <div title={`${d[labelKey]}: ${Math.round(safe(d[valueKey]) * getCachedRate())} ₽`} style={{
             width:'100%', borderRadius:'3px 3px 0 0',
             height:`${Math.max(4, (safe(d[valueKey])/max)*56)}px`,
             background:`linear-gradient(to top, ${color}, ${color}66)`,
@@ -112,8 +114,9 @@ export default function AdminPage() {
   const [chats, setChats]           = useState([])
   const [partners, setPartners]     = useState([])
   const [chatSearch, setChatSearch] = useState('')
-  const [openChat, setOpenChat]     = useState(null) // { user1, user2, messages }
+  const [openChat, setOpenChat]     = useState(null)
   const [chatLoading, setChatLoading] = useState(false)
+  const { fmt } = useCurrency()
 
   const loadTab = async (t) => {
     setLoading(true)
@@ -195,7 +198,7 @@ export default function AdminPage() {
     if (isNaN(parsed)) return toast.error('Введите число')
     const reason = window.prompt('Причина:') || 'Admin adjustment'
     const r = await adminApi.post(`/users/${id}/balance`, { amount: parsed, reason })
-    r.ok ? (toast.success(`Новый баланс: $${safe(r.newBalance).toFixed(2)}`), loadTab('users')) : toast.error(r.error)
+    r.ok ? (toast.success(`Новый баланс: ${fmt(r.newBalance)}`), loadTab('users')) : toast.error(r.error)
   }
 
   // Уровни продавца
@@ -381,7 +384,7 @@ export default function AdminPage() {
             )}
             {detailed?.pendingWithdrawals?.count > 0 && (
               <div style={{ background:'rgba(245,200,66,0.08)', border:'1px solid rgba(245,200,66,0.3)', borderRadius:12, padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:10, color:'var(--accent)', fontWeight:700, fontSize:13 }}>
-                <Clock size={16}/> {detailed.pendingWithdrawals.count} заявок на вывод на ${safe(detailed.pendingWithdrawals.vol).toFixed(2)}
+                <Clock size={16}/> {detailed.pendingWithdrawals.count} заявок на вывод на {fmt(detailed.pendingWithdrawals.vol)}
               </div>
             )}
 
@@ -390,7 +393,7 @@ export default function AdminPage() {
               <MetricCard icon={<Users size={22}/>} label="Всего юзеров" value={stats?.users ?? '—'} sub={`+${detailed?.users?.today||0} сегодня`}/>
               <MetricCard icon={<Package size={22}/>} label="Активных товаров" value={stats?.products ?? '—'}/>
               <MetricCard icon={<Handshake size={22}/>} label="Всего сделок" value={stats?.deals ?? '—'} sub={`${detailed?.deals?.today||0} сегодня`}/>
-              <MetricCard icon={<DollarSign size={22}/>} label="Доход платформы" value={`$${safe(stats?.revenue).toFixed(2)}`} sub={`$${safe(detailed?.revenue?.today).toFixed(2)} сегодня`}/>
+              <MetricCard icon={<DollarSign size={22}/>} label="Доход платформы" value={fmt(stats?.revenue)} sub={`${fmt(detailed?.revenue?.today)} сегодня`}/>
             </div>
 
             {/* Периоды */}
@@ -405,7 +408,7 @@ export default function AdminPage() {
                   <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                     <div style={{ display:'flex', justifyContent:'space-between' }}>
                       <span style={{ fontSize:13, color:'var(--t3)' }}>Доход</span>
-                      <span style={{ fontSize:13, fontWeight:700, color:'var(--green)' }}>${safe(rev).toFixed(2)}</span>
+                      <span style={{ fontSize:13, fontWeight:700, color:'var(--green)' }}>{fmt(rev)}</span>
                     </div>
                     <div style={{ display:'flex', justifyContent:'space-between' }}>
                       <span style={{ fontSize:13, color:'var(--t3)' }}>Сделок</span>
@@ -439,7 +442,7 @@ export default function AdminPage() {
                       <div style={{ fontSize:13, fontWeight:600 }}>@{s.username}</div>
                       <div style={{ fontSize:11, color:'var(--t3)' }}>{s.sales} сделок</div>
                     </div>
-                    <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--green)', fontSize:13 }}>${safe(s.earned).toFixed(0)}</div>
+                    <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--green)', fontSize:13 }}>{fmt(s.earned)}</div>
                   </div>
                 )) : <div style={{ color:'var(--t3)', fontSize:13 }}>Нет данных</div>}
               </div>
@@ -454,7 +457,7 @@ export default function AdminPage() {
                       <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.title}</div>
                       <div style={{ fontSize:11, color:'var(--t3)' }}>{p.sales} продаж · {p.views} просмотров</div>
                     </div>
-                    <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--accent)', fontSize:13 }}>${safe(p.price).toFixed(0)}</div>
+                    <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--accent)', fontSize:13 }}>{fmt(p.price)}</div>
                   </div>
                 )) : <div style={{ color:'var(--t3)', fontSize:13 }}>Нет данных</div>}
               </div>
@@ -523,7 +526,7 @@ export default function AdminPage() {
                               {u.isSubAdmin  && <span className="badge badge-purple" style={{fontSize:10}}>⚡ Субадмин</span>}
                             </div>
                             <div style={{ fontSize:12, color:'var(--t3)', marginTop:2 }}>
-                              Баланс: <b style={{color:'var(--accent)'}}>${safe(u.balance).toFixed(2)}</b>
+                              Баланс: <b style={{color:'var(--accent)'}}>{fmt(u.balance)}</b>
                               {' · '}↑{u.totalSales||0} ↓{u.totalPurchases||0}
                               {' · '}★{safe(u.rating||5).toFixed(1)}
                               {u.telegram_id ? ' · TG ✓' : ' · TG ✗'}
@@ -587,7 +590,7 @@ export default function AdminPage() {
                           </div>
                           {d.disputeReason && <div style={{ fontSize:12, color:'var(--red)', marginTop:4 }}>💬 {d.disputeReason}</div>}
                         </div>
-                        <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--accent)', fontSize:15 }}>${safe(d.amount).toFixed(2)}</div>
+                        <div style={{ fontFamily:'var(--font-h)', fontWeight:700, color:'var(--accent)', fontSize:15 }}>{fmt(d.amount)}</div>
                         <span style={{ fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:6, background:`${STATUS_COLOR[d.status]||'var(--t3)'}22`, color: STATUS_COLOR[d.status]||'var(--t3)' }}>
                           {STATUS_LABEL[d.status]||d.status}
                         </span>
@@ -633,7 +636,7 @@ export default function AdminPage() {
                         <div style={{ flex:1, minWidth:150 }}>
                           <div style={{ fontWeight:600, fontSize:14 }}>{p.title||'—'}</div>
                           <div style={{ fontSize:12, color:'var(--t3)', marginTop:2 }}>
-                            @{p.seller?.username||'?'} · <b style={{color:'var(--accent)'}}>${safe(p.price).toFixed(2)}</b> · {p.category||'—'}
+                            @{p.seller?.username||'?'} · <b style={{color:'var(--accent)'}}>{fmt(p.price)}</b> · {p.category||'—'}
                             {p.views > 0 && <> · <Eye size={11} style={{display:'inline'}}/> {p.views}</>}
                           </div>
                         </div>
@@ -669,7 +672,7 @@ export default function AdminPage() {
                           </div>
                         </div>
                         <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:14, color: plus ? 'var(--green)' : 'var(--red)' }}>
-                          {plus?'+':'-'}${Math.abs(safe(tx.amount)).toFixed(2)}
+                          {plus?'+':'-'}{fmt(Math.abs(safe(tx.amount)))}
                         </div>
                       </div>
                     )
@@ -801,7 +804,7 @@ export default function AdminPage() {
                       <div style={{ flex:1, minWidth:100 }}>
                         <div style={{ fontWeight:700, fontSize:14 }}>@{p.username}</div>
                         <div style={{ fontSize:12, color:'var(--t3)', marginTop:2 }}>
-                          👥 {p.referred_count} рефералов · 💰 ${parseFloat(p.total_rewards||0).toFixed(2)} заработано · Баланс: ${parseFloat(p.balance||0).toFixed(2)}
+                          👥 {p.referred_count} рефералов · 💰 {fmt(p.total_rewards||0)} заработано · Баланс: {fmt(p.balance||0)}
                         </div>
                         <div style={{ fontSize:11, color:'var(--t4)', marginTop:2 }}>
                           Код: <code style={{color:'var(--accent)'}}>{p.ref_code}</code>
