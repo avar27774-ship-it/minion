@@ -26,6 +26,7 @@ export default function Layout({ children }) {
   const navigate  = useNavigate()
   const location  = useLocation()
   const [menuOpen,   setMenuOpen]   = useState(false)
+  const [radioOpen,  setRadioOpen]  = useState(false)
   const [mobileMenu, setMobileMenu] = useState(false)
   const [scrolled,   setScrolled]   = useState(false)
   const [notifOpen,  setNotifOpen]  = useState(false)
@@ -474,7 +475,7 @@ export default function Layout({ children }) {
       </footer>
 
       {/* ── Онлайн радио (над навбаром) ──────────────────────────────────────── */}
-      <Radio/>
+      <Radio triggerOpen={radioOpen} onTriggerHandled={() => setRadioOpen(false)}/>
 
       {/* ── Mobile bottom navigation ──────────────────────────────────────────── */}
       <nav className="mobile-bottom-nav" style={{
@@ -492,9 +493,23 @@ export default function Layout({ children }) {
           { to:'/sell',     icon:<IconPlus/>,      label:'Продать', center:true },
           { to:'/messages', icon:<IconMessages/>,  label:'Чаты' },
           { to: user ? '/profile' : '/auth', icon:<IconProfile/>, label: user ? 'Профиль' : 'Войти' },
+          { radio:true, label:'Радио' },
           { menu:true, label:'Меню' },
         ].map(item => (
-          item.menu ? (
+          item.radio ? (
+            <button key="radio" onClick={() => setRadioOpen(true)} style={{
+              flex:1, display:'flex', flexDirection:'column', alignItems:'center',
+              justifyContent:'center', gap:3, padding:'8px 0',
+              background:'transparent', border:'none', cursor:'pointer',
+              color:'var(--t3)',
+            }}>
+              <div style={{
+                width:28, height:28, display:'flex', alignItems:'center',
+                justifyContent:'center', borderRadius:8, fontSize:16,
+              }}>📻</div>
+              <span style={{ fontSize:10, fontWeight:700, fontFamily:'var(--font-h)', marginTop:1, color:'var(--t3)' }}>Радио</span>
+            </button>
+          ) : item.menu ? (
             <button key="menu" onClick={() => setMobileMenu(true)} style={{
               flex:1, display:'flex', flexDirection:'column', alignItems:'center',
               justifyContent:'center', gap:3, padding:'8px 0',
