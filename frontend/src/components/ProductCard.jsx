@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import ElectricBorder from './ElectricBorder/ElectricBorder'
 import QuickView from './QuickView'
+import { useCurrency } from '../hooks/useCurrency'
 
 const statusColors = { active:'var(--green)', sold:'var(--t3)', frozen:'var(--accent)', moderation:'var(--purple)' }
 const statusLabels = { active:'В продаже', sold:'Продан', frozen:'В сделке', moderation:'Проверка' }
@@ -9,6 +10,7 @@ const statusLabels = { active:'В продаже', sold:'Продан', frozen:'
 export default function ProductCard({ product, style={} }) {
   const [hovered, setHovered]       = useState(false)
   const [quickView, setQuickView]   = useState(false)
+  const { fmt } = useCurrency()
   if (!product) return null
   const seller = product.seller
   const img = product.images?.[0]
@@ -81,7 +83,7 @@ export default function ProductCard({ product, style={} }) {
                 </div>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                   <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, color:'var(--accent)' }}>
-                    ${parseFloat(product.price).toFixed(2)}
+                    {fmt(product.price)}
                   </div>
                   {seller && (
                     <div style={{ display:'flex', alignItems:'center', gap:6 }}>
