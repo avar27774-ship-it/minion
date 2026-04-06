@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, useStore } from '../store'
 import toast from 'react-hot-toast'
+import { useCurrency } from '../hooks/useCurrency'
 
 const CATEGORIES = ['game-accounts','game-currency','items','skins','keys','subscriptions','boost','other']
 const CAT_NAMES  = { 'game-accounts':'Аккаунты','game-currency':'Валюта','items':'Предметы','skins':'Скины','keys':'Ключи','subscriptions':'Подписки','boost':'Буст','other':'Прочее' }
@@ -19,6 +20,7 @@ function Field({ label, children }) {
 export default function SellPage() {
   const { user } = useStore()
   const navigate  = useNavigate()
+  const { rate, fmt } = useCurrency()
   const [form, setForm] = useState({ title:'', description:'', price:'', category:'', game:'', deliveryData:'', deliveryType:'manual', tags:'' })
   const [loading, setLoading] = useState(false)
 
@@ -31,7 +33,9 @@ export default function SellPage() {
     setLoading(true)
     try {
       const tags = form.tags.split(',').map(t => t.trim()).filter(Boolean)
-      const { data } = await api.post('/products', { ...form, price: parseFloat(form.price), tags })
+      // Конвертируем рубли в USD для хранения в БД
+      const priceUsd = parseFloat(form.price) / (rate || 90)
+      const { data } = await api.post('/products', { ...form, price: priceUsd, tags })
       toast.success('Товар создан!')
       navigate(`/product/${data._id||data.id}`)
     } catch(e) { toast.error(e.response?.data?.error||'Ошибка') }
@@ -57,8 +61,13 @@ export default function SellPage() {
         </Field>
 
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-          <Field label="ЦЕНА (USD) *">
-            <input className="inp" type="number" placeholder="0.00" min="0.1" step="0.01" value={form.price} onChange={e => upd('price', e.target.value)}/>
+          <Field label="ЦЕНА (₽) *">
+            <input className="inp" type="number" placeholder="0" min="1" step="1" value={form.price} onChange={e => upd('price', e.target.value)}/>
+            {form.price && rate > 0 && (
+              <div style={{ fontSize:11, color:'var(--t4)', marginTop:4 }}>
+                ≈ {(parseFloat(form.price||0) / rate).toFixed(2)} USD
+              </div>
+            )}
           </Field>
           <Field label="ИГРА (если есть)">
             <input className="inp" placeholder="CS2, Minecraft..." value={form.game} onChange={e => upd('game', e.target.value)}/>
