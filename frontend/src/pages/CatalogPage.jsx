@@ -7,6 +7,150 @@ import { useRef } from 'react'
 import { api } from '../store'
 import ProductCard from '../components/ProductCard'
 
+// ── Апп-стор категории (большие иконки сверху) ────────────────────────────────
+const APP_SECTIONS = [
+  {
+    slug: 'apps',
+    name: 'Приложения',
+    shortName: 'Приложения',
+    emoji: '📱',
+    bg: 'linear-gradient(135deg,#0ea5e9,#2563eb)',
+    shadow: 'rgba(14,165,233,0.45)',
+    mapTo: 'subscriptions', // маппим на существующую категорию
+    apps: [
+      { name:'Windows',    emoji:'🪟', bg:'#0078d4' },
+      { name:'Canva',      emoji:'🎨', bg:'#7c3aed' },
+      { name:'Spotify',    emoji:'🎵', bg:'#1db954' },
+      { name:'Netflix',    emoji:'🎬', bg:'#e50914' },
+      { name:'Discord',    emoji:'💬', bg:'#5865f2' },
+      { name:'Adobe',      emoji:'🅰️', bg:'#ff0000' },
+      { name:'Figma',      emoji:'✏️', bg:'#f24e1e' },
+      { name:'YouTube',    emoji:'▶️', bg:'#ff0000' },
+    ]
+  },
+  {
+    slug: 'games',
+    name: 'Игры',
+    shortName: 'Игры',
+    emoji: '🎮',
+    bg: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
+    shadow: 'rgba(124,58,237,0.45)',
+    mapTo: 'game-accounts',
+    apps: [
+      { name:'PUBG',       emoji:'🔫', bg:'#f59e0b' },
+      { name:'CS2',        emoji:'💣', bg:'#ea580c' },
+      { name:'LoL',        emoji:'⚔️', bg:'#c89b3c' },
+      { name:'Forza',      emoji:'🏎️', bg:'#111' },
+      { name:'GTA V',      emoji:'🌆', bg:'#16a34a' },
+      { name:'Minecraft',  emoji:'⛏️', bg:'#92400e' },
+      { name:'Roblox',     emoji:'🧱', bg:'#e11d48' },
+      { name:'Dota 2',     emoji:'🛡️', bg:'#7f1d1d' },
+    ]
+  },
+  {
+    slug: 'mobile',
+    name: 'Мобильные игры',
+    shortName: 'Мобильные',
+    emoji: '📲',
+    bg: 'linear-gradient(135deg,#059669,#10b981)',
+    shadow: 'rgba(5,150,105,0.45)',
+    mapTo: 'items',
+    apps: [
+      { name:'Brawl Stars', emoji:'⭐', bg:'#f59e0b' },
+      { name:'PUBG Mobile', emoji:'🪖', bg:'#92400e' },
+      { name:'Free Fire',   emoji:'🔥', bg:'#dc2626' },
+      { name:'Clash',       emoji:'👑', bg:'#d97706' },
+      { name:'Mobile Leg.', emoji:'🏆', bg:'#7c3aed' },
+      { name:'CoD Mobile',  emoji:'🎯', bg:'#16a34a' },
+      { name:'Standoff 2',  emoji:'🔪', bg:'#0f172a' },
+      { name:'Genshin',     emoji:'💎', bg:'#0ea5e9' },
+    ]
+  },
+]
+
+// Иконка одного приложения (маленькая, 4 в ряд)
+function MiniAppIcon({ app }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+      <div style={{
+        width:52, height:52, borderRadius:14,
+        background: app.bg,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        fontSize:24,
+        boxShadow:'0 3px 10px rgba(0,0,0,0.35)',
+      }}>{app.emoji}</div>
+      <div style={{
+        fontSize:9, color:'rgba(255,255,255,0.75)', fontWeight:500,
+        textAlign:'center', maxWidth:56,
+        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+      }}>{app.name}</div>
+    </div>
+  )
+}
+
+// Большой баннер-секции (как в апп-сторе)
+function AppSection({ section, onSelect, active }) {
+  const isActive = active === section.slug
+  return (
+    <div
+      onClick={() => onSelect(isActive ? null : section.slug)}
+      style={{
+        borderRadius:20, overflow:'hidden', cursor:'pointer', flexShrink:0,
+        width:'calc(100vw - 32px)', maxWidth:440,
+        background: isActive
+          ? section.bg
+          : 'rgba(255,255,255,0.04)',
+        border: isActive
+          ? 'none'
+          : '1px solid rgba(255,255,255,0.08)',
+        transition:'all 0.22s',
+        boxShadow: isActive ? `0 8px 32px ${section.shadow}` : 'none',
+        scrollSnapAlign:'start',
+      }}
+    >
+      {/* Header */}
+      <div style={{ padding:'14px 16px 10px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{
+            width:40, height:40, borderRadius:12,
+            background: isActive ? 'rgba(255,255,255,0.2)' : section.bg,
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:22,
+            boxShadow: isActive ? 'none' : `0 4px 16px ${section.shadow}`,
+          }}>{section.emoji}</div>
+          <div>
+            <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:15, color: isActive ? '#fff' : 'var(--t1)' }}>
+              {section.name}
+            </div>
+            <div style={{ fontSize:11, color: isActive ? 'rgba(255,255,255,0.65)' : 'var(--t4)', marginTop:1 }}>
+              {isActive ? 'Нажми ещё раз для сброса' : 'Нажми для фильтра'}
+            </div>
+          </div>
+        </div>
+        <div style={{
+          fontSize:11, fontWeight:700,
+          color: isActive ? 'rgba(255,255,255,0.9)' : 'var(--accent)',
+          background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(245,200,66,0.12)',
+          padding:'4px 10px', borderRadius:20,
+          border: isActive ? 'none' : '1px solid rgba(245,200,66,0.25)',
+        }}>
+          {isActive ? '✓ Выбрано' : 'Смотреть'}
+        </div>
+      </div>
+
+      {/* App icons grid — 8 иконок 4x2 */}
+      <div style={{
+        display:'grid', gridTemplateColumns:'repeat(4,1fr)',
+        gap:'10px 6px', padding:'6px 16px 14px',
+      }}>
+        {section.apps.slice(0,8).map((app, i) => (
+          <MiniAppIcon key={i} app={app}/>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const CATEGORIES = [
   { slug:'', name:'Все' },
   { slug:'game-accounts', name:'Аккаунты', icon: <Gamepad2 size={18} strokeWidth={1.5}/> },
@@ -26,6 +170,17 @@ export default function CatalogPage() {
   const [total, setTotal]       = useState(0)
   const [loading, setLoading]   = useState(true)
   const [page, setPage]         = useState(1)
+  const [activeSection, setActiveSection] = useState(null)
+
+  const handleSectionSelect = (slug) => {
+    setActiveSection(slug)
+    const section = APP_SECTIONS.find(s => s.slug === slug)
+    const ns = new URLSearchParams(sp)
+    if (section) ns.set("category", section.mapTo)
+    else ns.delete("category")
+    setSp(ns)
+  }
+
 
   const category = sp.get('category') || ''
   const search   = sp.get('search') || ''
@@ -95,7 +250,17 @@ export default function CatalogPage() {
 
       {/* Контент поверх */}
       <div style={{ position:'relative', zIndex:1, maxWidth:1200, margin:'0 auto', padding:'24px 12px' }}>
-      <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:32, marginBottom:24 }}>Каталог</h1>
+      <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:32, marginBottom:16 }}>Каталог</h1>
+
+      {/* App-store sections */}
+      <div style={{ marginBottom:24 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:'var(--t4)', letterSpacing:'0.1em', marginBottom:12 }}>КАТЕГОРИИ</div>
+        <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:4, scrollSnapType:'x mandatory', WebkitOverflowScrolling:'touch', msOverflowStyle:'none', scrollbarWidth:'none' }}>
+          {APP_SECTIONS.map(section => (
+            <AppSection key={section.slug} section={section} onSelect={handleSectionSelect} active={activeSection}/>
+          ))}
+        </div>
+      </div>
 
       {/* Строка поиска */}
       <div style={{ display:'flex', gap:8, marginBottom:12 }}>
