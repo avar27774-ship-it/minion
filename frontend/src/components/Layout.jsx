@@ -354,7 +354,7 @@ export default function Layout({ children }) {
             )}
           </div>
 
-          {/* Mobile: balance + burger */}
+          {/* Mobile: balance + bell only (burger is in bottom nav) */}
           <div style={{ display:'none', alignItems:'center', gap:8, marginLeft:'auto' }} className="mobile-header-right">
             {user && (
               <div style={{
@@ -367,22 +367,28 @@ export default function Layout({ children }) {
                 <DollarSign size={11} strokeWidth={2.5}/>{fmt(user.balance||0)}
               </div>
             )}
-            <button
-              onClick={() => setMobileMenu(true)}
-              style={{
-                width:38, height:38, borderRadius:10,
-                background:'rgba(255,255,255,0.06)',
-                border:'1px solid rgba(255,255,255,0.08)',
-                display:'flex', flexDirection:'column',
-                alignItems:'center', justifyContent:'center', gap:4, cursor:'pointer',
-                transition:'all 0.15s',
-              }}
-              aria-label="Меню"
-            >
-              <span style={{ width:16, height:1.5, background:'rgba(255,255,255,0.7)', borderRadius:2, display:'block' }}/>
-              <span style={{ width:16, height:1.5, background:'rgba(255,255,255,0.7)', borderRadius:2, display:'block' }}/>
-              <span style={{ width:10, height:1.5, background:'rgba(255,255,255,0.7)', borderRadius:2, display:'block', alignSelf:'flex-start', marginLeft:3 }}/>
-            </button>
+            {user && (
+              <button
+                onClick={() => { setNotifOpen(o => !o); if (!notifOpen && unread > 0) markAllRead() }}
+                style={{
+                  width:38, height:38, borderRadius:10,
+                  background:'rgba(255,255,255,0.06)',
+                  border:'1px solid rgba(255,255,255,0.08)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  cursor:'pointer', position:'relative', color:'var(--t2)',
+                }}
+              >
+                <Bell size={17} strokeWidth={1.75}/>
+                {unread > 0 && (
+                  <span style={{
+                    position:'absolute', top:6, right:6,
+                    width:7, height:7, borderRadius:'50%',
+                    background:'var(--accent)',
+                    boxShadow:'0 0 6px var(--accent)',
+                  }}/>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </header>
