@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { Toaster } from "react-hot-toast";
 import { useStore } from "./store";
 import Layout from "./components/Layout";
+import HomePage     from "./pages/HomePage";
 import AuthPage     from "./pages/AuthPage";
 import CatalogPage  from "./pages/CatalogPage";
 import GamesPage    from "./pages/GamesPage";
@@ -438,8 +439,10 @@ export default function App() {
           <Route path="/wallet"           element={<PrivateRoute><WalletPage /></PrivateRoute>} />
         </Route>
 
-        {/* Главная (мобильный интерфейс) и 404 */}
-        <Route path="/" element={<PlayerokApp />} />
+        {/* Главная и 404 */}
+        <Route element={<Layout />}>
+          <Route path="/" element={<HomePage />} />
+        </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
