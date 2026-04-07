@@ -17,6 +17,7 @@ const Admin    = lazy(() => import('./pages/AdminPage'))
 const Profile  = lazy(() => import('./pages/ProfilePage'))
 const NotFound = lazy(() => import('./pages/NotFoundPage'))
 const Messages = lazy(() => import('./pages/MessagesPage'))
+const Games    = lazy(() => import('./pages/GamesPage'))
 
 class ErrorBoundary extends Component {
   state = { error: null }
@@ -135,6 +136,7 @@ const InnerRoutes = () => (
       <Route path="/user/:id"       element={<Profile/>}/>
       <Route path="/messages"       element={<Messages/>}/>
       <Route path="/messages/:userId" element={<Messages/>}/>
+      <Route path="/games"            element={<Games/>}/>
       <Route path="/legal/:page"    element={<Legal/>}/>
       <Route path="/contacts"       element={<Navigate to="/legal/contacts"/>}/>
       <Route path="*"               element={<NotFound/>}/>
