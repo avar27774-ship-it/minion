@@ -168,8 +168,11 @@ export default function Layout({ children }) {
               display:'flex', alignItems:'center', justifyContent:'center',
               fontSize:20, boxShadow:'0 4px 16px rgba(245,200,66,0.4)'
             }}>M</div>
-            <span style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:18, letterSpacing:'-0.02em' }}>
+            <span className="logo-full" style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:18, letterSpacing:'-0.02em' }}>
               Minions<span style={{ color:'var(--accent)' }}>.</span>Market
+            </span>
+            <span className="logo-short" style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:18, letterSpacing:'-0.02em', display:'none' }}>
+              M<span style={{ color:'var(--accent)' }}>.</span>M
             </span>
           </Link>
 
@@ -354,11 +357,11 @@ export default function Layout({ children }) {
             )}
           </div>
 
-          {/* Mobile: balance + bell only (burger is in bottom nav) */}
-          <div style={{ display:'none', alignItems:'center', gap:8, marginLeft:'auto' }} className="mobile-header-right">
+          {/* Mobile: balance + radio + bell (burger is in bottom nav) */}
+          <div style={{ display:'none', alignItems:'center', gap:6, marginLeft:'auto' }} className="mobile-header-right">
             {user && (
               <div style={{
-                display:'flex', alignItems:'center', gap:5, padding:'5px 11px',
+                display:'flex', alignItems:'center', gap:5, padding:'5px 10px',
                 background:'rgba(245,200,66,0.08)',
                 border:'1px solid rgba(245,200,66,0.15)',
                 borderRadius:10,
@@ -367,27 +370,103 @@ export default function Layout({ children }) {
                 <DollarSign size={11} strokeWidth={2.5}/>{fmt(user.balance||0)}
               </div>
             )}
+
+            {/* Radio button */}
+            <button
+              onClick={() => setRadioOpen(true)}
+              style={{
+                width:36, height:36, borderRadius:10,
+                background:'rgba(255,255,255,0.06)',
+                border:'1px solid rgba(255,255,255,0.08)',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', fontSize:16,
+              }}
+              aria-label="Радио"
+            >📻</button>
+
+            {/* Bell with dropdown */}
             {user && (
-              <button
-                onClick={() => { setNotifOpen(o => !o); if (!notifOpen && unread > 0) markAllRead() }}
-                style={{
-                  width:38, height:38, borderRadius:10,
-                  background:'rgba(255,255,255,0.06)',
-                  border:'1px solid rgba(255,255,255,0.08)',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  cursor:'pointer', position:'relative', color:'var(--t2)',
-                }}
-              >
-                <Bell size={17} strokeWidth={1.75}/>
-                {unread > 0 && (
-                  <span style={{
-                    position:'absolute', top:6, right:6,
-                    width:7, height:7, borderRadius:'50%',
-                    background:'var(--accent)',
-                    boxShadow:'0 0 6px var(--accent)',
-                  }}/>
+              <div style={{ position:'relative' }}>
+                <button
+                  onClick={() => { setNotifOpen(o => !o); if (!notifOpen && unread > 0) markAllRead() }}
+                  style={{
+                    width:36, height:36, borderRadius:10,
+                    background:'rgba(255,255,255,0.06)',
+                    border:'1px solid rgba(255,255,255,0.08)',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    cursor:'pointer', position:'relative', color:'var(--t2)',
+                  }}
+                >
+                  <Bell size={17} strokeWidth={1.75}/>
+                  {unread > 0 && (
+                    <span style={{
+                      position:'absolute', top:7, right:7,
+                      width:7, height:7, borderRadius:'50%',
+                      background:'var(--accent)',
+                      boxShadow:'0 0 6px var(--accent)',
+                    }}/>
+                  )}
+                </button>
+
+                {/* Mobile notification dropdown */}
+                {notifOpen && (
+                  <div onClick={() => setNotifOpen(false)} style={{ position:'fixed', inset:0, zIndex:150 }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                      position:'fixed', top:70, right:8, left:8,
+                      maxHeight:'70vh',
+                      background:'rgba(12,12,22,0.92)',
+                      backdropFilter:'blur(32px)',
+                      WebkitBackdropFilter:'blur(32px)',
+                      border:'1px solid rgba(255,255,255,0.08)',
+                      borderRadius:18, overflow:'hidden',
+                      boxShadow:'0 16px 48px rgba(0,0,0,0.6)', zIndex:151,
+                      animation:'fadeUp 0.2s ease',
+                      display:'flex', flexDirection:'column',
+                    }}>
+                      <div style={{
+                        display:'flex', alignItems:'center', justifyContent:'space-between',
+                        padding:'14px 16px', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0,
+                      }}>
+                        <span style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:15 }}>🔔 Уведомления</span>
+                        <div style={{ display:'flex', gap:8 }}>
+                          {notifs.length > 0 && (
+                            <button onClick={clearAll} style={{ fontSize:11, color:'var(--t4)', background:'none', border:'none', cursor:'pointer' }}>Очистить</button>
+                          )}
+                          {unread > 0 && (
+                            <button onClick={markAllRead} style={{ fontSize:11, color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>Прочитать все</button>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ overflow:'auto', flex:1 }}>
+                        {notifs.length === 0 ? (
+                          <div style={{ padding:'40px 20px', textAlign:'center', color:'var(--t4)', fontSize:13 }}>
+                            <div style={{ fontSize:32, marginBottom:8 }}>🔕</div>
+                            Уведомлений пока нет
+                          </div>
+                        ) : notifs.map(n => (
+                          <div key={n.id || n._id}
+                            onClick={() => { setNotifOpen(false); if (n.link) navigate(n.link) }}
+                            style={{
+                              display:'flex', gap:12, padding:'12px 16px',
+                              borderBottom:'1px solid rgba(255,255,255,0.05)',
+                              cursor: n.link ? 'pointer' : 'default',
+                              background: n.is_read ? 'transparent' : 'rgba(245,200,66,0.04)',
+                            }}
+                          >
+                            <div style={{ width:36, height:36, borderRadius:10, flexShrink:0, background:'rgba(255,255,255,0.06)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>{n.icon || '🔔'}</div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:13, fontWeight: n.is_read ? 500 : 700, color: n.is_read ? 'var(--t2)' : 'var(--t1)', marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{n.title}</div>
+                              {n.body && <div style={{ fontSize:12, color:'var(--t3)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{n.body}</div>}
+                              <div style={{ fontSize:11, color:'var(--t4)', marginTop:3 }}>{timeAgo(n.createdAt || n.created_at)}</div>
+                            </div>
+                            {!n.is_read && <div style={{ width:7, height:7, borderRadius:100, background:'var(--accent)', flexShrink:0, marginTop:6 }}/>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 )}
-              </button>
+              </div>
             )}
           </div>
         </div>
@@ -640,24 +719,9 @@ export default function Layout({ children }) {
           { to:'/catalog', icon:<IconGrid/>,   label:'Каталог' },
           { to:'/sell',    icon:<IconPlus/>,   label:'Продать', center:true },
           { to:'/deals',   icon:<IconDeals/>,  label:'Сделки',  badge: activeDeals },
-          { radio:true,    label:'Радио' },
           { menu:true,     label:'Меню' },
         ].map(item => (
-          item.radio ? (
-            <button key="radio" onClick={() => setRadioOpen(true)} style={{
-              flex:1, display:'flex', flexDirection:'column', alignItems:'center',
-              justifyContent:'center', gap:2, padding:'8px 0',
-              background:'transparent', border:'none', cursor:'pointer',
-            }}>
-              <div style={{
-                width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center',
-                borderRadius:10, fontSize:17,
-                background: 'transparent',
-                transition:'all 0.2s',
-              }}>📻</div>
-              <span style={{ fontSize:10, fontWeight:600, letterSpacing:'0.02em', color:'var(--t3)' }}>Радио</span>
-            </button>
-          ) : item.menu ? (
+          item.menu ? (
             <button key="menu" onClick={() => setMobileMenu(true)} style={{
               flex:1, display:'flex', flexDirection:'column', alignItems:'center',
               justifyContent:'center', gap:2, padding:'8px 0',
@@ -736,10 +800,13 @@ export default function Layout({ children }) {
           .mobile-footer   { display: block !important; }
           header { padding-left: 12px !important; padding-right: 12px !important; }
           header > div { padding: 0 !important; }
+          .logo-full { display: none !important; }
+          .logo-short { display: inline !important; }
         }
         @media (min-width: 769px) {
           .mobile-footer  { display: none !important; }
           .desktop-footer { display: block !important; }
+          .logo-short { display: none !important; }
         }
       `}</style>
     </div>
