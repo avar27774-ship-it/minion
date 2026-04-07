@@ -151,12 +151,12 @@ export default function Layout({ children }) {
       {/* ── Header ───────────────────────────────────────────────────────────── */}
       <header style={{
         position: 'sticky', top: 0, zIndex: 100,
-        background: scrolled ? 'rgba(10,10,18,0.82)' : 'rgba(10,10,18,0.5)',
-        backdropFilter: 'blur(32px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(32px) saturate(180%)',
-        borderBottom: `1px solid ${scrolled ? 'rgba(255,255,255,0.07)' : 'transparent'}`,
+        background: scrolled ? 'rgba(8,8,16,0.6)' : 'rgba(8,8,16,0.2)',
+        backdropFilter: 'blur(28px) saturate(160%)',
+        WebkitBackdropFilter: 'blur(28px) saturate(160%)',
+        borderBottom: `1px solid ${scrolled ? 'rgba(255,255,255,0.06)' : 'transparent'}`,
         transition: 'all 0.3s', padding: '0 max(12px, env(safe-area-inset-left))',
-        boxShadow: scrolled ? '0 4px 30px rgba(0,0,0,0.3)' : 'none',
+        boxShadow: scrolled ? '0 2px 20px rgba(0,0,0,0.2)' : 'none',
       }}>
         <div style={{ maxWidth:1200, margin:'0 auto', height:64, display:'flex', alignItems:'center', gap:12 }}>
 
@@ -393,30 +393,31 @@ export default function Layout({ children }) {
           {/* Backdrop */}
           <div onClick={() => setMobileMenu(false)} style={{
             position:'fixed', inset:0,
-            background:'rgba(0,0,0,0.6)',
-            backdropFilter:'blur(12px)',
-            WebkitBackdropFilter:'blur(12px)',
+            background:'rgba(0,0,0,0.35)',
+            backdropFilter:'blur(6px)',
+            WebkitBackdropFilter:'blur(6px)',
             zIndex:200, animation:'fadeIn 0.2s ease'
           }}/>
 
           {/* Drawer */}
           <div style={{
             position:'fixed', top:0, right:0, bottom:0, width:'min(300px, 82vw)',
-            background:'rgba(12,12,20,0.85)',
-            backdropFilter:'blur(40px) saturate(200%)',
-            WebkitBackdropFilter:'blur(40px) saturate(200%)',
-            borderLeft:'1px solid rgba(255,255,255,0.08)',
+            background:'rgba(8,8,18,0.55)',
+            backdropFilter:'blur(48px) saturate(180%)',
+            WebkitBackdropFilter:'blur(48px) saturate(180%)',
+            borderLeft:'1px solid rgba(255,255,255,0.07)',
             zIndex:201, display:'flex', flexDirection:'column',
             animation:'slideIn 0.28s cubic-bezier(0.32,0.72,0,1)',
             overflowY:'auto',
-            boxShadow:'-20px 0 60px rgba(0,0,0,0.6)',
+            boxShadow:'-4px 0 40px rgba(0,0,0,0.3)',
           }}>
 
             {/* Header */}
             <div style={{
               padding:'20px 18px 16px',
-              borderBottom:'1px solid rgba(255,255,255,0.06)',
+              borderBottom:'1px solid rgba(255,255,255,0.05)',
               display:'flex', alignItems:'center', justifyContent:'space-between',
+              background:'rgba(255,255,255,0.02)',
             }}>
               <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:17, letterSpacing:'-0.02em' }}>
                 Minions<span style={{ color:'var(--accent)' }}>.</span>Market
@@ -435,8 +436,8 @@ export default function Layout({ children }) {
             {user && (
               <Link to="/profile" onClick={() => setMobileMenu(false)} style={{
                 padding:'14px 18px', textDecoration:'none',
-                borderBottom:'1px solid rgba(255,255,255,0.06)',
-                background:'rgba(245,200,66,0.04)',
+                borderBottom:'1px solid rgba(255,255,255,0.05)',
+                background:'rgba(245,200,66,0.05)',
                 display:'flex', alignItems:'center', gap:12,
                 transition:'background 0.15s',
               }}>
@@ -534,7 +535,7 @@ export default function Layout({ children }) {
             </div>
 
             {/* Footer actions */}
-            <div style={{ padding:'10px 10px 20px', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ padding:'10px 10px 20px', borderTop:'1px solid rgba(255,255,255,0.05)', background:'rgba(255,255,255,0.01)' }}>
               {user ? (
                 <button onClick={() => { logout(); navigate('/'); setMobileMenu(false) }} style={{
                   display:'flex', alignItems:'center', justifyContent:'center', gap:8,
@@ -619,14 +620,14 @@ export default function Layout({ children }) {
       {/* ── Mobile bottom navigation ──────────────────────────────────────────── */}
       <nav className="mobile-bottom-nav" style={{
         position:'fixed', bottom:0, left:0, right:0, zIndex:90,
-        background:'rgba(10,10,18,0.75)',
-        backdropFilter:'blur(32px) saturate(180%)',
-        WebkitBackdropFilter:'blur(32px) saturate(180%)',
-        borderTop:'1px solid rgba(255,255,255,0.07)',
+        background:'rgba(8,8,16,0.4)',
+        backdropFilter:'blur(30px) saturate(150%)',
+        WebkitBackdropFilter:'blur(30px) saturate(150%)',
+        borderTop:'1px solid rgba(255,255,255,0.05)',
         display:'none', alignItems:'center',
         paddingBottom:'env(safe-area-inset-bottom)',
         height:'calc(var(--bot-nav) + env(safe-area-inset-bottom))',
-        boxShadow:'0 -1px 0 rgba(255,255,255,0.04), 0 -20px 60px rgba(0,0,0,0.5)',
+        boxShadow:'none',
       }}>
         {[
           { to:'/',        icon:<IconHome/>,   label:'Главная' },
