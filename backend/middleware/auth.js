@@ -38,6 +38,14 @@ async function auth(req, res, next) {
     }
 
     if (user.is_banned) {
+      // Если забанен только из-за телефона — особый код ошибки
+      if (user.ban_reason === 'phone_required') {
+        return res.status(403).json({
+          error: 'Требуется подтверждение номера телефона',
+          code: 'PHONE_REQUIRED',
+          reason: 'phone_required'
+        });
+      }
       return res.status(403).json({
         error: 'Аккаунт заблокирован',
         bannedUntil: user.banned_until ? new Date(user.banned_until * 1000) : null,
