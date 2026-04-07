@@ -151,10 +151,12 @@ export default function Layout({ children }) {
       {/* ── Header ───────────────────────────────────────────────────────────── */}
       <header style={{
         position: 'sticky', top: 0, zIndex: 100,
-        background: scrolled ? 'rgba(13,13,20,0.97)' : 'rgba(13,13,20,0.7)',
-        backdropFilter: 'blur(24px)',
-        borderBottom: `1px solid ${scrolled ? 'rgba(255,255,255,0.08)' : 'transparent'}`,
+        background: scrolled ? 'rgba(10,10,18,0.82)' : 'rgba(10,10,18,0.5)',
+        backdropFilter: 'blur(32px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(32px) saturate(180%)',
+        borderBottom: `1px solid ${scrolled ? 'rgba(255,255,255,0.07)' : 'transparent'}`,
         transition: 'all 0.3s', padding: '0 max(12px, env(safe-area-inset-left))',
+        boxShadow: scrolled ? '0 4px 30px rgba(0,0,0,0.3)' : 'none',
       }}>
         <div style={{ maxWidth:1200, margin:'0 auto', height:64, display:'flex', alignItems:'center', gap:12 }}>
 
@@ -353,28 +355,33 @@ export default function Layout({ children }) {
           </div>
 
           {/* Mobile: balance + burger */}
-          <div style={{ display:'none', alignItems:'center', gap:10, marginLeft:'auto' }} className="mobile-header-right">
+          <div style={{ display:'none', alignItems:'center', gap:8, marginLeft:'auto' }} className="mobile-header-right">
             {user && (
               <div style={{
-                display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
-                background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10,
-                fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)'
+                display:'flex', alignItems:'center', gap:5, padding:'5px 11px',
+                background:'rgba(245,200,66,0.08)',
+                border:'1px solid rgba(245,200,66,0.15)',
+                borderRadius:10,
+                fontSize:12, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)',
               }}>
-                <DollarSign size={13} strokeWidth={2} style={{marginRight:2}}/>{fmt(user.balance||0)}
+                <DollarSign size={11} strokeWidth={2.5}/>{fmt(user.balance||0)}
               </div>
             )}
             <button
               onClick={() => setMobileMenu(true)}
               style={{
-                width:40, height:40, borderRadius:10, background:'var(--bg3)',
-                border:'1px solid var(--border)', display:'flex', flexDirection:'column',
-                alignItems:'center', justifyContent:'center', gap:5, cursor:'pointer',
+                width:38, height:38, borderRadius:10,
+                background:'rgba(255,255,255,0.06)',
+                border:'1px solid rgba(255,255,255,0.08)',
+                display:'flex', flexDirection:'column',
+                alignItems:'center', justifyContent:'center', gap:4, cursor:'pointer',
+                transition:'all 0.15s',
               }}
               aria-label="Меню"
             >
-              <span style={{ width:18, height:2, background:'var(--t1)', borderRadius:2, display:'block', transition:'all 0.2s' }}/>
-              <span style={{ width:18, height:2, background:'var(--t1)', borderRadius:2, display:'block', transition:'all 0.2s' }}/>
-              <span style={{ width:12, height:2, background:'var(--t1)', borderRadius:2, display:'block', transition:'all 0.2s', marginLeft:-6 }}/>
+              <span style={{ width:16, height:1.5, background:'rgba(255,255,255,0.7)', borderRadius:2, display:'block' }}/>
+              <span style={{ width:16, height:1.5, background:'rgba(255,255,255,0.7)', borderRadius:2, display:'block' }}/>
+              <span style={{ width:10, height:1.5, background:'rgba(255,255,255,0.7)', borderRadius:2, display:'block', alignSelf:'flex-start', marginLeft:3 }}/>
             </button>
           </div>
         </div>
@@ -383,101 +390,167 @@ export default function Layout({ children }) {
       {/* ── Mobile Sidebar Menu ───────────────────────────────────────────────── */}
       {mobileMenu && (
         <>
+          {/* Backdrop */}
           <div onClick={() => setMobileMenu(false)} style={{
-            position:'fixed', inset:0, background:'rgba(0,0,0,0.7)',
-            backdropFilter:'blur(8px)', zIndex:200, animation:'fadeIn 0.2s ease'
+            position:'fixed', inset:0,
+            background:'rgba(0,0,0,0.6)',
+            backdropFilter:'blur(12px)',
+            WebkitBackdropFilter:'blur(12px)',
+            zIndex:200, animation:'fadeIn 0.2s ease'
           }}/>
+
+          {/* Drawer */}
           <div style={{
-            position:'fixed', top:0, right:0, bottom:0, width:'min(320px, 85vw)',
-            background:'var(--bg2)', borderLeft:'1px solid var(--border)',
+            position:'fixed', top:0, right:0, bottom:0, width:'min(300px, 82vw)',
+            background:'rgba(12,12,20,0.85)',
+            backdropFilter:'blur(40px) saturate(200%)',
+            WebkitBackdropFilter:'blur(40px) saturate(200%)',
+            borderLeft:'1px solid rgba(255,255,255,0.08)',
             zIndex:201, display:'flex', flexDirection:'column',
-            animation:'slideIn 0.25s ease', overflowY:'auto',
+            animation:'slideIn 0.28s cubic-bezier(0.32,0.72,0,1)',
+            overflowY:'auto',
+            boxShadow:'-20px 0 60px rgba(0,0,0,0.6)',
           }}>
-            <div style={{ padding:'20px 20px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <span style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:16 }}>
+
+            {/* Header */}
+            <div style={{
+              padding:'20px 18px 16px',
+              borderBottom:'1px solid rgba(255,255,255,0.06)',
+              display:'flex', alignItems:'center', justifyContent:'space-between',
+            }}>
+              <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:17, letterSpacing:'-0.02em' }}>
                 Minions<span style={{ color:'var(--accent)' }}>.</span>Market
-              </span>
+              </div>
               <button onClick={() => setMobileMenu(false)} style={{
-                width:36, height:36, borderRadius:8, background:'var(--bg3)',
-                border:'1px solid var(--border)', cursor:'pointer', color:'var(--t2)',
-                fontSize:18, display:'flex', alignItems:'center', justifyContent:'center'
+                width:32, height:32, borderRadius:8,
+                background:'rgba(255,255,255,0.06)',
+                border:'1px solid rgba(255,255,255,0.08)',
+                cursor:'pointer', color:'var(--t2)',
+                fontSize:14, display:'flex', alignItems:'center', justifyContent:'center',
+                transition:'all 0.15s',
               }}>✕</button>
             </div>
 
+            {/* User card */}
             {user && (
-              <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--border)', background:'var(--bg3)' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                  <div style={{
-                    width:44, height:44, borderRadius:12,
-                    background:'linear-gradient(135deg,var(--purple),var(--accent))',
-                    display:'flex', alignItems:'center', justifyContent:'center',
-                    fontSize:18, fontWeight:700, fontFamily:'var(--font-h)'
-                  }}>{avatar}</div>
-                  <div>
-                    <div style={{ fontWeight:700, fontSize:15 }}>@{user.username || user.firstName}</div>
-                    <div style={{ color:'var(--accent)', fontSize:13, fontWeight:700 }}>{fmt(user.balance||0)}</div>
-                  </div>
+              <Link to="/profile" onClick={() => setMobileMenu(false)} style={{
+                padding:'14px 18px', textDecoration:'none',
+                borderBottom:'1px solid rgba(255,255,255,0.06)',
+                background:'rgba(245,200,66,0.04)',
+                display:'flex', alignItems:'center', gap:12,
+                transition:'background 0.15s',
+              }}>
+                <div style={{
+                  width:46, height:46, borderRadius:14, flexShrink:0,
+                  background:'linear-gradient(135deg, rgba(139,92,246,0.8), rgba(245,200,66,0.8))',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:19, fontWeight:800, fontFamily:'var(--font-h)',
+                  boxShadow:'0 4px 16px rgba(139,92,246,0.3)',
+                  color:'#fff',
+                }}>{avatar}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:700, fontSize:14, color:'var(--t1)' }}>@{user.username || user.firstName}</div>
+                  <div style={{ color:'var(--accent)', fontSize:13, fontWeight:700, marginTop:1 }}>{fmt(user.balance||0)}</div>
                 </div>
-              </div>
+                <div style={{ color:'rgba(255,255,255,0.2)', fontSize:16 }}>›</div>
+              </Link>
             )}
 
-            <div style={{ padding:'12px 12px', flex:1 }}>
+            {/* Nav links */}
+            <div style={{ padding:'10px 10px', flex:1 }}>
+
+              {/* Main section */}
+              <div style={{ marginBottom:6 }}>
+                {[
+                  { to:'/',        icon:'🏠', label:'Главная' },
+                  { to:'/catalog', icon:'🛍', label:'Каталог' },
+                  ...(user ? [
+                    { to:'/sell',    icon:'📦', label:'Продать' },
+                    { to:'/deals',   icon:'🤝', label:'Мои сделки', badge: activeDeals },
+                    { to:'/wallet',  icon:'💳', label:'Кошелёк' },
+                    { to:'/profile', icon:'👤', label:'Профиль' },
+                  ] : []),
+                ].map(item => (
+                  <Link key={item.to} to={item.to} onClick={() => setMobileMenu(false)} style={{
+                    display:'flex', alignItems:'center', gap:12, padding:'11px 12px',
+                    borderRadius:11, textDecoration:'none',
+                    color: isActive(item.to) ? 'var(--t1)' : 'rgba(255,255,255,0.65)',
+                    background: isActive(item.to) ? 'rgba(245,200,66,0.1)' : 'transparent',
+                    fontSize:14, fontWeight: isActive(item.to) ? 600 : 400,
+                    marginBottom:1, transition:'all 0.15s',
+                    borderLeft: isActive(item.to) ? '2px solid var(--accent)' : '2px solid transparent',
+                  }}>
+                    <span style={{ fontSize:17, width:22, textAlign:'center', opacity: isActive(item.to) ? 1 : 0.7 }}>{item.icon}</span>
+                    <span style={{ flex:1 }}>{item.label}</span>
+                    {item.badge > 0
+                      ? <span style={{ background:'var(--red)', color:'#fff', fontSize:10, fontWeight:800, padding:'2px 7px', borderRadius:100 }}>{item.badge}</span>
+                      : isActive(item.to) && <span style={{ color:'var(--accent)', fontSize:10, opacity:0.8 }}>●</span>
+                    }
+                  </Link>
+                ))}
+              </div>
+
+              {/* Divider */}
+              <div style={{ height:'1px', background:'rgba(255,255,255,0.05)', margin:'8px 4px 10px' }}/>
+
+              {/* Legal section label */}
+              <div style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.2)', letterSpacing:'0.1em', padding:'0 12px', marginBottom:6 }}>ИНФОРМАЦИЯ</div>
+
               {[
-                { to:'/',        icon:'🏠', label:'Главная' },
-                { to:'/catalog', icon:'🛍', label:'Каталог' },
-                ...(user ? [
-                  { to:'/sell',    icon:'📦', label:'Продать' },
-                  { to:'/deals',   icon:'🤝', label:'Мои сделки', badge: activeDeals },
-                  { to:'/wallet',  icon:'💳', label:'Кошелёк' },
-                  { to:'/profile', icon:'👤', label:'Профиль' },
-                ] : []),
                 { to:'/legal/rules',    icon:'📋', label:'Правила' },
                 { to:'/legal/offer',    icon:'📄', label:'Оферта' },
                 { to:'/legal/delivery', icon:'🚚', label:'Доставка' },
                 { to:'/legal/refund',   icon:'↩️', label:'Возврат' },
                 { to:'/legal/contacts', icon:'✉️', label:'Контакты' },
               ].map(item => (
-                <Link key={item.to} to={item.to} style={{
-                  display:'flex', alignItems:'center', gap:14, padding:'13px 12px',
-                  borderRadius:12, color: isActive(item.to) ? 'var(--t1)' : 'var(--t2)',
-                  background: isActive(item.to) ? 'rgba(245,200,66,0.08)' : 'transparent',
-                  fontSize:15, fontWeight: isActive(item.to) ? 600 : 400,
-                  marginBottom:2, transition:'all 0.15s',
+                <Link key={item.to} to={item.to} onClick={() => setMobileMenu(false)} style={{
+                  display:'flex', alignItems:'center', gap:12, padding:'9px 12px',
+                  borderRadius:10, textDecoration:'none',
+                  color:'rgba(255,255,255,0.4)',
+                  fontSize:13, fontWeight:400,
+                  marginBottom:1, transition:'color 0.15s',
                 }}>
-                  <span style={{ fontSize:18, width:24, textAlign:'center' }}>{item.icon}</span>
+                  <span style={{ fontSize:15, width:22, textAlign:'center', opacity:0.6 }}>{item.icon}</span>
                   {item.label}
-                  {item.badge > 0
-                    ? <span style={{ marginLeft:'auto', background:'var(--red)', color:'#fff', fontSize:10, fontWeight:800, padding:'2px 7px', borderRadius:100 }}>{item.badge}</span>
-                    : isActive(item.to) && <span style={{ marginLeft:'auto', color:'var(--accent)', fontSize:12 }}>●</span>
-                  }
                 </Link>
               ))}
 
+              {/* Admin */}
               {(user?.isAdmin || user?.isSubAdmin) && (
-                <Link to="/admin" style={{
-                  display:'flex', alignItems:'center', gap:14, padding:'13px 12px',
-                  borderRadius:12, color:'var(--accent)', fontSize:15, fontWeight:600,
-                  background:'rgba(245,200,66,0.06)', marginTop:8,
-                }}>
-                  <Zap size={20} strokeWidth={1.75}/>
-                  Админ панель
-                </Link>
+                <>
+                  <div style={{ height:'1px', background:'rgba(255,255,255,0.05)', margin:'8px 4px 10px' }}/>
+                  <Link to="/admin" onClick={() => setMobileMenu(false)} style={{
+                    display:'flex', alignItems:'center', gap:12, padding:'11px 12px',
+                    borderRadius:11, color:'var(--accent)', fontSize:14, fontWeight:600,
+                    background:'rgba(245,200,66,0.07)',
+                    border:'1px solid rgba(245,200,66,0.12)',
+                    textDecoration:'none',
+                  }}>
+                    <Zap size={18} strokeWidth={1.75}/>
+                    Админ панель
+                  </Link>
+                </>
               )}
             </div>
 
-            <div style={{ padding:'12px 20px 24px', borderTop:'1px solid var(--border)' }}>
+            {/* Footer actions */}
+            <div style={{ padding:'10px 10px 20px', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
               {user ? (
                 <button onClick={() => { logout(); navigate('/'); setMobileMenu(false) }} style={{
-                  display:'flex', alignItems:'center', gap:10, padding:'13px 16px',
-                  borderRadius:12, color:'var(--red)', fontSize:15, background:'rgba(231,76,60,0.08)',
-                  border:'1px solid rgba(231,76,60,0.2)', cursor:'pointer', width:'100%',
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                  padding:'11px 16px', borderRadius:11,
+                  color:'rgba(231,76,60,0.8)', fontSize:14,
+                  background:'rgba(231,76,60,0.07)',
+                  border:'1px solid rgba(231,76,60,0.12)',
+                  cursor:'pointer', width:'100%',
+                  transition:'all 0.15s',
                 }}>
-                  <span>→</span> Выйти
+                  <LogOut size={15} strokeWidth={1.75}/> Выйти
                 </button>
               ) : (
-                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  <Link to="/auth" className="btn btn-ghost btn-full">Войти</Link>
-                  <Link to="/auth?mode=register" className="btn btn-primary btn-full">Регистрация</Link>
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  <Link to="/auth" onClick={() => setMobileMenu(false)} className="btn btn-ghost btn-full">Войти</Link>
+                  <Link to="/auth?mode=register" onClick={() => setMobileMenu(false)} className="btn btn-primary btn-full">Регистрация</Link>
                 </div>
               )}
             </div>
@@ -546,83 +619,98 @@ export default function Layout({ children }) {
       {/* ── Mobile bottom navigation ──────────────────────────────────────────── */}
       <nav className="mobile-bottom-nav" style={{
         position:'fixed', bottom:0, left:0, right:0, zIndex:90,
-        background:'rgba(13,13,20,0.98)', backdropFilter:'blur(24px)',
-        borderTop:'1px solid rgba(255,255,255,0.06)',
+        background:'rgba(10,10,18,0.75)',
+        backdropFilter:'blur(32px) saturate(180%)',
+        WebkitBackdropFilter:'blur(32px) saturate(180%)',
+        borderTop:'1px solid rgba(255,255,255,0.07)',
         display:'none', alignItems:'center',
         paddingBottom:'env(safe-area-inset-bottom)',
         height:'calc(var(--bot-nav) + env(safe-area-inset-bottom))',
-        boxShadow:'0 -4px 24px rgba(0,0,0,0.4)',
+        boxShadow:'0 -1px 0 rgba(255,255,255,0.04), 0 -20px 60px rgba(0,0,0,0.5)',
       }}>
         {[
-          { to:'/',         icon:<IconHome/>,      label:'Главная' },
-          { to:'/catalog',  icon:<IconGrid/>,      label:'Каталог' },
-          { to:'/sell',     icon:<IconPlus/>,      label:'Продать', center:true },
-          { to:'/deals',    icon:<IconDeals/>,     label:'Сделки', badge: activeDeals },
-          { to: user ? '/profile' : '/auth', icon:<IconProfile/>, label: user ? 'Профиль' : 'Войти' },
-          { radio:true, label:'Радио' },
-          { menu:true, label:'Меню' },
+          { to:'/',        icon:<IconHome/>,   label:'Главная' },
+          { to:'/catalog', icon:<IconGrid/>,   label:'Каталог' },
+          { to:'/sell',    icon:<IconPlus/>,   label:'Продать', center:true },
+          { to:'/deals',   icon:<IconDeals/>,  label:'Сделки',  badge: activeDeals },
+          { radio:true,    label:'Радио' },
+          { menu:true,     label:'Меню' },
         ].map(item => (
           item.radio ? (
             <button key="radio" onClick={() => setRadioOpen(true)} style={{
               flex:1, display:'flex', flexDirection:'column', alignItems:'center',
-              justifyContent:'center', gap:3, padding:'8px 0',
-              background:'transparent', border:'none', cursor:'pointer', color:'var(--t3)',
+              justifyContent:'center', gap:2, padding:'8px 0',
+              background:'transparent', border:'none', cursor:'pointer',
             }}>
-              <div style={{ width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:8, fontSize:16 }}>📻</div>
-              <span style={{ fontSize:10, fontWeight:700, fontFamily:'var(--font-h)', marginTop:1, color:'var(--t3)' }}>Радио</span>
+              <div style={{
+                width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center',
+                borderRadius:10, fontSize:17,
+                background: 'transparent',
+                transition:'all 0.2s',
+              }}>📻</div>
+              <span style={{ fontSize:10, fontWeight:600, letterSpacing:'0.02em', color:'var(--t3)' }}>Радио</span>
             </button>
           ) : item.menu ? (
             <button key="menu" onClick={() => setMobileMenu(true)} style={{
               flex:1, display:'flex', flexDirection:'column', alignItems:'center',
-              justifyContent:'center', gap:3, padding:'8px 0',
+              justifyContent:'center', gap:2, padding:'8px 0',
               background:'transparent', border:'none', cursor:'pointer',
-              color: mobileMenu ? 'var(--accent)' : 'var(--t3)',
             }}>
               <div style={{
-                width:28, height:28, display:'flex', flexDirection:'column',
-                alignItems:'center', justifyContent:'center', gap:5, borderRadius:8,
-                background: mobileMenu ? 'rgba(245,200,66,0.12)' : 'transparent',
+                width:30, height:30, display:'flex', flexDirection:'column',
+                alignItems:'center', justifyContent:'center', gap:4, borderRadius:10,
+                background: mobileMenu ? 'rgba(245,200,66,0.15)' : 'transparent',
+                transition:'all 0.2s',
               }}>
-                <span style={{ width:14, height:2, background: mobileMenu ? 'var(--accent)' : 'var(--t3)', borderRadius:2, display:'block' }}/>
-                <span style={{ width:14, height:2, background: mobileMenu ? 'var(--accent)' : 'var(--t3)', borderRadius:2, display:'block' }}/>
-                <span style={{ width:10, height:2, background: mobileMenu ? 'var(--accent)' : 'var(--t3)', borderRadius:2, display:'block', alignSelf:'flex-start', marginLeft:2 }}/>
+                <span style={{ width:15, height:1.5, background: mobileMenu ? 'var(--accent)' : 'rgba(255,255,255,0.5)', borderRadius:2, display:'block', transition:'all 0.2s' }}/>
+                <span style={{ width:15, height:1.5, background: mobileMenu ? 'var(--accent)' : 'rgba(255,255,255,0.5)', borderRadius:2, display:'block', transition:'all 0.2s' }}/>
+                <span style={{ width:10, height:1.5, background: mobileMenu ? 'var(--accent)' : 'rgba(255,255,255,0.5)', borderRadius:2, display:'block', alignSelf:'flex-start', marginLeft:3, transition:'all 0.2s' }}/>
               </div>
-              <span style={{ fontSize:10, fontWeight:700, fontFamily:'var(--font-h)', marginTop:1, color: mobileMenu ? 'var(--accent)' : 'var(--t3)' }}>Меню</span>
+              <span style={{ fontSize:10, fontWeight:600, letterSpacing:'0.02em', color: mobileMenu ? 'var(--accent)' : 'var(--t3)', transition:'color 0.2s' }}>Меню</span>
             </button>
           ) : (
             <Link key={item.to} to={item.to} style={{
               flex:1, display:'flex', flexDirection:'column', alignItems:'center',
-              justifyContent:'center', gap:3, padding:'8px 0', textDecoration:'none',
-              color: isActive(item.to) ? 'var(--accent)' : 'var(--t3)',
-              transition:'color 0.15s', position:'relative',
+              justifyContent:'center', gap:2, padding:'8px 0', textDecoration:'none',
+              transition:'all 0.15s', position:'relative',
             }}>
               {item.center ? (
                 <div style={{
-                  width:52, height:52, borderRadius:16,
-                  background:'linear-gradient(135deg, var(--accent), #e8a020)',
+                  width:50, height:50, borderRadius:16,
+                  background:'linear-gradient(145deg, #f5c842, #d4930a)',
                   display:'flex', alignItems:'center', justifyContent:'center',
-                  color:'#0d0d14', marginTop:-20,
-                  boxShadow:'0 4px 24px rgba(245,200,66,0.5)',
-                  border:'3px solid rgba(13,13,20,0.8)',
+                  color:'#0d0d14', marginTop:-22,
+                  boxShadow:'0 6px 28px rgba(245,200,66,0.45), 0 2px 8px rgba(0,0,0,0.4)',
+                  border:'2.5px solid rgba(13,13,20,0.9)',
+                  transition:'transform 0.15s, box-shadow 0.15s',
                 }}>
                   {item.icon}
                 </div>
               ) : (
                 <>
                   <div style={{
-                    width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center',
-                    borderRadius:8, position:'relative',
-                    background: isActive(item.to) ? 'rgba(245,200,66,0.12)' : 'transparent',
-                    transition:'background 0.2s',
+                    width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center',
+                    borderRadius:10, position:'relative',
+                    background: isActive(item.to) ? 'rgba(245,200,66,0.15)' : 'transparent',
+                    transition:'all 0.2s',
                   }}>
-                    {item.icon}
-                    {/* ← БЕЙДЖ */}
+                    <span style={{ color: isActive(item.to) ? 'var(--accent)' : 'rgba(255,255,255,0.45)', transition:'color 0.2s' }}>
+                      {item.icon}
+                    </span>
                     <Badge count={item.badge} />
                   </div>
                   <span style={{
-                    fontSize:10, fontWeight:700, fontFamily:'var(--font-h)', marginTop:1,
+                    fontSize:10, fontWeight:600, letterSpacing:'0.02em',
                     color: isActive(item.to) ? 'var(--accent)' : 'var(--t3)',
+                    transition:'color 0.2s',
                   }}>{item.label}</span>
+                  {isActive(item.to) && (
+                    <span style={{
+                      position:'absolute', bottom:4, width:4, height:4,
+                      borderRadius:'50%', background:'var(--accent)',
+                      boxShadow:'0 0 6px var(--accent)',
+                    }}/>
+                  )}
                 </>
               )}
             </Link>
