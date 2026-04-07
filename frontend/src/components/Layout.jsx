@@ -579,6 +579,29 @@ export default function Layout({ children }) {
               {/* Divider */}
               <div style={{ height:'1px', background:'rgba(255,255,255,0.05)', margin:'8px 4px 10px' }}/>
 
+              {/* Games section */}
+              <div style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.2)', letterSpacing:'0.1em', padding:'0 12px', marginBottom:6 }}>ИГРЫ</div>
+              <Link to="/games" onClick={() => setMobileMenu(false)} style={{
+                display:'flex', alignItems:'center', gap:12, padding:'11px 12px',
+                borderRadius:11, textDecoration:'none',
+                color: isActive('/games') ? 'var(--t1)' : 'rgba(255,255,255,0.65)',
+                background: isActive('/games') ? 'rgba(245,200,66,0.1)' : 'transparent',
+                fontSize:14, fontWeight: isActive('/games') ? 600 : 400,
+                marginBottom:1, transition:'all 0.15s',
+                borderLeft: isActive('/games') ? '2px solid var(--accent)' : '2px solid transparent',
+              }}>
+                <span style={{ fontSize:17, width:22, textAlign:'center' }}>🎮</span>
+                <span style={{ flex:1 }}>Игры</span>
+                <span style={{ display:'flex', gap:4 }}>
+                  {['🍾','🟨','🐍'].map(e => (
+                    <span key={e} style={{ fontSize:12, opacity:0.6 }}>{e}</span>
+                  ))}
+                </span>
+              </Link>
+
+              {/* Divider */}
+              <div style={{ height:'1px', background:'rgba(255,255,255,0.05)', margin:'8px 4px 10px' }}/>
+
               {/* Legal section label */}
               <div style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.2)', letterSpacing:'0.1em', padding:'0 12px', marginBottom:6 }}>ИНФОРМАЦИЯ</div>
 
