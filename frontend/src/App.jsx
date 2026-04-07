@@ -1,170 +1,109 @@
-import React, { Suspense, lazy, Component, useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Toaster, toast } from 'react-hot-toast'
+import React, { useEffect } from 'react'
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
+import { useStore } from './store'
 import Layout from './components/Layout'
-import OfflineBanner from './components/OfflineBanner'
-import { useStore, api } from './store'
 
-const Home     = lazy(() => import('./pages/HomePage'))
-const Auth     = lazy(() => import('./pages/AuthPage'))
-const Catalog  = lazy(() => import('./pages/CatalogPage'))
-const Product  = lazy(() => import('./pages/ProductPage'))
-const Wallet   = lazy(() => import('./pages/WalletPage'))
-const Deals    = lazy(() => import('./pages/DealsPage'))
-const Sell     = lazy(() => import('./pages/SellPage'))
-const Legal    = lazy(() => import('./pages/LegalPage'))
-const Admin    = lazy(() => import('./pages/AdminPage'))
-const Profile  = lazy(() => import('./pages/ProfilePage'))
-const NotFound = lazy(() => import('./pages/NotFoundPage'))
-const Messages = lazy(() => import('./pages/MessagesPage'))
-const Games    = lazy(() => import('./pages/GamesPage'))
+// Pages
+import HomePage     from './pages/HomePage'
+import AuthPage     from './pages/AuthPage'
+import CatalogPage  from './pages/CatalogPage'
+import GamesPage    from './pages/GamesPage'
+import ProductPage  from './pages/ProductPage'
+import SellPage     from './pages/SellPage'
+import ProfilePage  from './pages/ProfilePage'
+import MessagesPage from './pages/MessagesPage'
+import DealsPage    from './pages/DealsPage'
+import WalletPage   from './pages/WalletPage'
+import AdminPage    from './pages/AdminPage'
+import LegalPage    from './pages/LegalPage'
+import NotFoundPage from './pages/NotFoundPage'
 
-class ErrorBoundary extends Component {
-  state = { error: null }
-  static getDerivedStateFromError(e) { return { error: e } }
-  componentDidCatch(e, info) { console.error('[ErrorBoundary]', e, info) }
-  render() {
-    if (this.state.error) return (
-      <div style={{ maxWidth:600, margin:'80px auto', padding:'0 20px', textAlign:'center' }}>
-        <div style={{ fontSize:48, marginBottom:16 }}>💥</div>
-        <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:22, marginBottom:12 }}>Что-то пошло не так</div>
-        <div style={{ background:'rgba(231,76,60,0.1)', border:'1px solid rgba(231,76,60,0.3)', borderRadius:12, padding:16, marginBottom:24, fontSize:13, color:'var(--red)', textAlign:'left', wordBreak:'break-all' }}>
-          {this.state.error?.message || String(this.state.error)}
-        </div>
-        <button className="btn btn-primary" onClick={() => { this.setState({ error: null }); window.location.href = '/' }}>На главную</button>
-      </div>
-    )
-    return this.props.children
-  }
-}
+// ── Защищённый маршрут ────────────────────────────────────────────────────────
+function PrivateRoute({ children }) {
+  const user     = useStore(s => s.user)
+  const hydrated = useStore(s => s.hydrated)
+  const location = useLocation()
 
-function Loader() {
-  return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'40vh' }}>
-      <div style={{ width:32, height:32, border:'3px solid var(--border)', borderTopColor:'var(--accent)', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
-    </div>
-  )
-}
-
-function useTelegramViewport() {
-  useEffect(() => {
-    const tg = window.Telegram?.WebApp
-    const setHeight = (h) => document.documentElement.style.setProperty('--app-height', `${h}px`)
-    if (tg) {
-      const apply = () => setHeight(tg.viewportStableHeight || tg.viewportHeight || window.innerHeight)
-      apply()
-      tg.onEvent('viewportChanged', apply)
-      return () => tg.offEvent('viewportChanged', apply)
-    } else {
-      const apply = () => setHeight(window.visualViewport?.height || window.innerHeight)
-      apply()
-      window.visualViewport?.addEventListener('resize', apply)
-      window.addEventListener('resize', apply)
-      return () => {
-        window.visualViewport?.removeEventListener('resize', apply)
-        window.removeEventListener('resize', apply)
-      }
-    }
-  }, [])
-}
-
-// ── Telegram Mini App авто-логин ──────────────────────────────────────────────
-function TelegramWebAppAuth({ children }) {
-  const { user, setUser, hydrated } = useStore()
-  const [tgReady, setTgReady] = useState(false)
-
-  useEffect(() => {
-    // Ждём пока zustand persist загрузит user из localStorage
-    if (!hydrated) return
-
-    const tg = window.Telegram?.WebApp
-    if (!tg || !tg.initData) {
-      setTgReady(true)
-      return
-    }
-
-    tg.ready()
-    tg.expand()
-    tg.setHeaderColor('#0d0d14')
-    tg.setBackgroundColor('#0d0d14')
-
-    // Достаём TG id из initData
-    let tgUserId = null
-    try {
-      const params = new URLSearchParams(tg.initData)
-      tgUserId = String(JSON.parse(params.get('user') || '{}').id || '')
-    } catch (e) {}
-
-    // Если уже залогинен тем же TG аккаунтом — не делаем запрос
-    if (user && tgUserId) {
-      const storedTgId = String(user.telegramId || user.telegram_id || '')
-      if (storedTgId && storedTgId === tgUserId) {
-        setTgReady(true)
-        return
-      }
-      // Другой аккаунт — сбрасываем
-      localStorage.removeItem('mn_token')
-    }
-
-    // Авторизуемся через initData
-    api.post('/auth/tg-webapp', { initData: tg.initData })
-      .then(({ data }) => {
-        localStorage.setItem('mn_token', data.token)
-        setUser(data.user)
-        if (data.isNew) toast.success('Добро пожаловать, ' + (data.user.firstName || data.user.username) + '! 🎉')
-      })
-      .catch(err => console.warn('[TgWebApp] auth failed:', err.response?.data?.error))
-      .finally(() => setTgReady(true))
-
-  }, [hydrated]) // ← ждём hydrated
-
-  // Пока store не загрузился или TG не авторизовался — показываем лоадер
-  if (!hydrated || !tgReady) return <Loader />
+  if (!hydrated) return null
+  if (!user) return <Navigate to="/auth" state={{ from: location }} replace />
   return children
 }
 
-const InnerRoutes = () => (
-  <Suspense fallback={<Loader/>}>
-    <Routes>
-      <Route path="/"               element={<Home/>}/>
-      <Route path="/catalog"        element={<Catalog/>}/>
-      <Route path="/product/:id"    element={<Product/>}/>
-      <Route path="/wallet"         element={<Wallet/>}/>
-      <Route path="/deals"          element={<Deals/>}/>
-      <Route path="/sell"           element={<Sell/>}/>
-      <Route path="/profile"        element={<Profile/>}/>
-      <Route path="/user/:id"       element={<Profile/>}/>
-      <Route path="/messages"       element={<Messages/>}/>
-      <Route path="/messages/:userId" element={<Messages/>}/>
-      <Route path="/games"            element={<Games/>}/>
-      <Route path="/legal/:page"    element={<Legal/>}/>
-      <Route path="/contacts"       element={<Navigate to="/legal/contacts"/>}/>
-      <Route path="*"               element={<NotFound/>}/>
-    </Routes>
-  </Suspense>
-)
+// ── Только для гостей ─────────────────────────────────────────────────────────
+function GuestRoute({ children }) {
+  const user     = useStore(s => s.user)
+  const hydrated = useStore(s => s.hydrated)
 
+  if (!hydrated) return null
+  if (user) return <Navigate to="/" replace />
+  return children
+}
+
+// ── Инициализация ─────────────────────────────────────────────────────────────
+function AppInit() {
+  const refreshUser = useStore(s => s.refreshUser)
+  const setHydrated = useStore(s => s.setHydrated)
+  const hydrated    = useStore(s => s.hydrated)
+
+  useEffect(() => {
+    if (!hydrated) setHydrated()
+    refreshUser()
+  }, []) // eslint-disable-line
+
+  return null
+}
+
+// ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  useTelegramViewport()
   return (
     <BrowserRouter>
-      <OfflineBanner/>
-      <Toaster position="top-right" toastOptions={{
-        style: { background:'var(--bg2)', color:'var(--t1)', border:'1px solid var(--border)' },
-        success: { iconTheme:{ primary:'var(--accent)', secondary:'var(--bg)' } },
-        duration: 4000,
-      }}/>
-      <ErrorBoundary>
-        <TelegramWebAppAuth>
-          <Suspense fallback={<Loader/>}>
-            <Routes>
-              <Route path="/admin" element={<Admin/>}/>
-              <Route path="/auth"  element={<Auth/>}/>
-              <Route path="/*"     element={<Layout><InnerRoutes/></Layout>}/>
-            </Routes>
-          </Suspense>
-        </TelegramWebAppAuth>
-      </ErrorBoundary>
+      <AppInit />
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          style: {
+            background: '#1e1e24',
+            color: '#fff',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '12px',
+            fontSize: '14px',
+          },
+        }}
+      />
+      <Routes>
+        {/* Без Layout */}
+        <Route path="/auth"  element={<GuestRoute><AuthPage /></GuestRoute>} />
+        <Route path="/admin" element={<AdminPage />} />
+
+        {/* С Layout (шапка + нижнее меню) */}
+        <Route element={<Layout />}>
+          <Route path="/"              element={<HomePage />} />
+          <Route path="/catalog"       element={<CatalogPage />} />
+          <Route path="/games"         element={<GamesPage />} />
+          <Route path="/products/:id"  element={<ProductPage />} />
+          <Route path="/legal"         element={<LegalPage />} />
+          <Route path="/legal/:tab"    element={<LegalPage />} />
+          <Route path="/profile/:userId" element={<ProfilePage />} />
+
+          {/* Только для авторизованных */}
+          <Route path="/sell"            element={<PrivateRoute><SellPage /></PrivateRoute>} />
+          <Route path="/profile"         element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+          <Route path="/messages"        element={<PrivateRoute><MessagesPage /></PrivateRoute>} />
+          <Route path="/messages/:userId" element={<PrivateRoute><MessagesPage /></PrivateRoute>} />
+          <Route path="/deals"           element={<PrivateRoute><DealsPage /></PrivateRoute>} />
+          <Route path="/deals/:dealId"   element={<PrivateRoute><DealsPage /></PrivateRoute>} />
+          <Route path="/wallet"          element={<PrivateRoute><WalletPage /></PrivateRoute>} />
+        </Route>
+
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
     </BrowserRouter>
   )
 }
