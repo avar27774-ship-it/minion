@@ -1,311 +1,468 @@
-require('dotenv').config();
-const express   = require('express');
-const cors      = require('cors');
-const path      = require('path');
-const rateLimit = require('express-rate-limit');
-const cron      = require('node-cron');
-const http      = require('http');
+const router   = require('express').Router();
+const crypto   = require('crypto');
+const { queryOne, queryAll, run, transaction } = require('../models/db');
+const { auth } = require('../middleware/auth');
+const rukassa  = require('../utils/rukassa');
+const cryptopay   = require('../utils/cryptopay');
+const crystalpay  = require('../utils/crystalpay');
+const notify   = require('../utils/notify');
+const { sanitizeUser } = require('./auth');
+const { broadcast } = require('../utils/wsEvents');
 
-const app = express();
-app.set('trust proxy', 1);
+const MIN_DEPOSIT = 1;
 
-// ── Блокировка IP ─────────────────────────────────────────────────────────────
-const getBlockedIps = () => (process.env.BLOCKED_IPS || '').split(',').map(s => s.trim()).filter(Boolean);
-
-// Автобан в памяти (сбрасывается при рестарте, постоянные — в BLOCKED_IPS)
-const autoBannedIps = new Map(); // ip -> { until, reason }
-
-function getClientIp(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim()
-    || req.headers['cf-connecting-ip']
-    || req.socket?.remoteAddress
-    || '';
-}
-
-function autoBanIp(ip, minutes, reason) {
-  autoBannedIps.set(ip, { until: Date.now() + minutes * 60000, reason });
-  console.warn(`[SECURITY] Автобан IP ${ip} на ${minutes} мин: ${reason}`);
-  // Уведомляем админа
+// ── GET /wallet/transactions ──────────────────────────────────────────────────
+router.get('/transactions', auth, async (req, res) => {
   try {
-    const { sendTg } = require('./utils/notify');
+    const txs = await queryAll(
+      `SELECT * FROM transactions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+      [req.userId]
+    );
+    res.json({ transactions: txs.map(tx => ({ ...tx, _id: tx.id, createdAt: new Date(tx.created_at * 1000) })) });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка' });
+  }
+});
+
+// ── POST /wallet/deposit/rukassa ──────────────────────────────────────────────
+router.post('/deposit/rukassa', auth, async (req, res) => {
+  try {
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount < MIN_DEPOSIT) return res.status(400).json({ error: `Минимум $${MIN_DEPOSIT}` });
+
+    const orderId   = `rukassa_${req.userId}_${Date.now()}`;
+    const hookUrl   = `${process.env.BACKEND_URL || ''}/api/wallet/webhook/rukassa`;
+    const successUrl = `${process.env.FRONTEND_URL || ''}/wallet?success=1`;
+
+    const result = await rukassa.createInvoice({ amount, orderId, hookUrl, successUrl, comment: `Пополнение баланса Minions Market на $${amount}` });
+    if (!result.ok) return res.status(502).json({ error: result.error });
+
+    const user = await queryOne('SELECT balance FROM users WHERE id = $1', [req.userId]);
+    await run(`
+      INSERT INTO transactions (id, user_id, type, amount, status, description, gateway_type, gateway_invoice_id, gateway_pay_url, gateway_order_id, balance_before)
+      VALUES ($1,$2,'deposit',$3,'pending','Пополнение RuKassa','rukassa',$4,$5,$6,$7)
+    `, [crypto.randomUUID(), req.userId, amount, result.invoiceId, result.payUrl, orderId, user?.balance || 0]);
+
+    res.json({ payUrl: result.payUrl, orderId });
+  } catch (e) {
+    console.error('Rukassa deposit error:', e);
+    res.status(500).json({ error: 'Ошибка платёжной системы' });
+  }
+});
+
+// ── POST /wallet/deposit/cryptopay ───────────────────────────────────────────
+router.post('/deposit/cryptopay', auth, async (req, res) => {
+  try {
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount < MIN_DEPOSIT) return res.status(400).json({ error: `Минимум $${MIN_DEPOSIT}` });
+
+    const orderId = `cp_${req.userId}_${Date.now()}`;
+    const result  = await cryptopay.createInvoice({
+      amount,
+      orderId,
+      description: `Пополнение Minions Market на $${amount}`,
+    });
+    if (!result.ok) return res.status(502).json({ error: result.error });
+
+    const user = await queryOne('SELECT balance FROM users WHERE id = $1', [req.userId]);
+    await run(`
+      INSERT INTO transactions (id, user_id, type, amount, status, description, gateway_type, gateway_invoice_id, gateway_pay_url, gateway_order_id, balance_before)
+      VALUES ($1,$2,'deposit',$3,'pending','Пополнение CryptoPay (Telegram)','cryptopay',$4,$5,$6,$7)
+    `, [crypto.randomUUID(), req.userId, amount, result.invoiceId, result.payUrl, orderId, user?.balance || 0]);
+
+    res.json({ payUrl: result.payUrl, orderId });
+  } catch (e) {
+    console.error('CryptoPay deposit error:', e);
+    res.status(500).json({ error: 'Ошибка платёжной системы' });
+  }
+});
+
+// ── POST /wallet/webhook/rukassa ──────────────────────────────────────────────
+router.post('/webhook/rukassa', async (req, res) => {
+  try {
+    if (!rukassa.verifyWebhook(req.body)) {
+      console.warn('Invalid RuKassa webhook signature');
+      return res.status(400).send('Invalid signature');
+    }
+    const { order_id, status } = req.body;
+    if (status !== 'success') return res.send('ok');
+
+    const tx = await queryOne('SELECT * FROM transactions WHERE gateway_order_id = $1', [order_id]);
+    if (!tx || tx.status === 'completed') return res.send('ok');
+
+    await creditUser(tx);
+    res.send('ok');
+  } catch (e) {
+    console.error('Rukassa webhook error:', e);
+    res.status(500).send('error');
+  }
+});
+
+// ── POST /wallet/webhook/cryptopay ───────────────────────────────────────────
+router.post('/webhook/cryptopay', async (req, res) => {
+  try {
+    const signature = req.headers['crypto-pay-api-signature'];
+    if (!cryptopay.verifyWebhook(req.body, signature)) {
+      console.warn('[CryptoPay] Invalid webhook signature');
+      return res.status(400).send('Invalid signature');
+    }
+
+    const { update_type, payload: invoiceData } = req.body;
+    if (update_type !== 'invoice_paid') return res.send('ok');
+
+    const orderId = invoiceData?.payload;
+    if (!orderId) return res.send('ok');
+
+    const tx = await queryOne('SELECT * FROM transactions WHERE gateway_order_id = $1', [orderId]);
+    if (!tx || tx.status === 'completed') return res.send('ok');
+
+    await creditUser(tx);
+    res.send('ok');
+  } catch (e) {
+    console.error('CryptoPay webhook error:', e);
+    res.status(500).send('error');
+  }
+});
+
+// ── POST /wallet/withdraw ─────────────────────────────────────────────────────
+const DAILY_WITHDRAW_LIMIT = parseFloat(process.env.DAILY_WITHDRAW_LIMIT || '500');
+
+router.post('/withdraw', auth, async (req, res) => {
+  try {
+    const { amount, address, currency = 'USDT' } = req.body;
+    const amt = parseFloat(amount);
+    if (!amt || amt < 5)    return res.status(400).json({ error: 'Минимальный вывод $5' });
+    if (!address?.trim())   return res.status(400).json({ error: 'Укажите адрес/тег CryptoBot' });
+
+    const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.userId]);
+    if (parseFloat(user.balance) < amt) return res.status(400).json({ error: 'Недостаточно средств' });
+
+    const since24h = Math.floor(Date.now() / 1000) - 86400;
+    const withdrawn24h = await queryOne(
+      `SELECT COALESCE(SUM(amount),0) as total FROM transactions
+       WHERE user_id=$1 AND type='withdrawal' AND created_at>=$2`,
+      [req.userId, since24h]
+    );
+    const alreadyWithdrawn = parseFloat(withdrawn24h.total) || 0;
+
+    if (alreadyWithdrawn + amt > DAILY_WITHDRAW_LIMIT) {
+      const remaining = Math.max(0, DAILY_WITHDRAW_LIMIT - alreadyWithdrawn);
+      if (process.env.REPORT_CHAT_ID) {
+        notify.sendTg(process.env.REPORT_CHAT_ID,
+          `⚠️ <b>Превышение лимита вывода</b>\n\n` +
+          `👤 @${user.username}\n` +
+          `💰 Пытается вывести: $${amt.toFixed(2)}\n` +
+          `📊 Уже выведено за 24ч: $${alreadyWithdrawn.toFixed(2)}\n` +
+          `🔒 Лимит: $${DAILY_WITHDRAW_LIMIT}\n` +
+          `✅ Доступно к выводу: $${remaining.toFixed(2)}`
+        ).catch(() => {});
+      }
+      return res.status(400).json({
+        error: `Превышен дневной лимит вывода $${DAILY_WITHDRAW_LIMIT}. Уже выведено: $${alreadyWithdrawn.toFixed(2)}. Доступно: $${remaining.toFixed(2)}`
+      });
+    }
+
+    const { getIp } = require('../utils/securityLog');
+    const currentIp  = getIp(req);
+    const isSuspicious = user.last_ip && user.last_ip !== currentIp && amt >= 50;
+
+    if (isSuspicious) {
+      if (process.env.REPORT_CHAT_ID) {
+        notify.sendTg(process.env.REPORT_CHAT_ID,
+          `🚨 <b>Подозрительный вывод!</b>\n\n` +
+          `👤 @${user.username}\n` +
+          `💰 Сумма: $${amt.toFixed(2)}\n` +
+          `📍 Обычный IP: <code>${user.last_ip}</code>\n` +
+          `📍 Текущий IP: <code>${currentIp}</code>\n\n` +
+          `⚠️ Вывод с нового IP — возможный взлом аккаунта!`
+        ).catch(() => {});
+      }
+      if (user.telegram_id) {
+        notify.sendTg(user.telegram_id,
+          `🚨 <b>Подозрительная активность!</b>\n\n` +
+          `Запрос на вывод $${amt.toFixed(2)} с нового устройства.\n\n` +
+          `Если это не вы — немедленно смените пароль!`
+        ).catch(() => {});
+      }
+    }
+
+    const WITHDRAW_FEE_RATE = 0.05;
+    const fee        = Math.round(amt * WITHDRAW_FEE_RATE * 100) / 100;
+    const amtReceive = Math.round((amt - fee) * 100) / 100;
+    const totalDebit = amt;
+
+    await transaction(async (client) => {
+      await client.query(
+        `UPDATE users SET balance = balance - $1, total_withdrawn = total_withdrawn + $1 WHERE id = $2`,
+        [totalDebit, req.userId]
+      );
+      await client.query(`
+        INSERT INTO transactions (id, user_id, type, amount, status, description, balance_before, balance_after)
+        VALUES ($1,$2,'withdrawal',$3,'pending',$4,$5,$6)
+      `, [crypto.randomUUID(), req.userId, amtReceive,
+          `Вывод ${currency} → ${address} (комиссия 5%: $${fee.toFixed(2)})`,
+          user.balance, parseFloat(user.balance) - totalDebit]);
+      await client.query(`
+        INSERT INTO transactions (id, user_id, type, amount, status, description)
+        VALUES ($1,$2,'commission',$3,'completed',$4)
+      `, [crypto.randomUUID(), req.userId, fee,
+          `Комиссия за вывод 5% от $${amt.toFixed(2)}`]);
+    });
+
+    notify.notifyWithdraw(user, amtReceive, currency).catch(() => {});
+
     if (process.env.REPORT_CHAT_ID) {
-      sendTg(process.env.REPORT_CHAT_ID,
-        `🔴 <b>Автобан IP</b>\n\nIP: <code>${ip}</code>\nПричина: ${reason}\nСрок: ${minutes} минут`
+      notify.sendTg(process.env.REPORT_CHAT_ID,
+        `💸 <b>Запрос на вывод</b>\n\n` +
+        `👤 @${user.username}\n` +
+        `💰 Запрошено: $${amt.toFixed(2)} ${currency}\n` +
+        `📊 Комиссия 5%: $${fee.toFixed(2)}\n` +
+        `✅ Получит: $${amtReceive.toFixed(2)}\n` +
+        `📍 IP: <code>${currentIp}</code>\n` +
+        `🏦 Адрес: <code>${address}</code>`
       ).catch(() => {});
     }
-  } catch(e) {}
-}
 
-// SQL-инъекции и известные паттерны атак
-// FIX: паттерны были слишком широкими и блокировали легитимные описания товаров
-// (например "please select item from list" или "insert into bag").
-// Теперь используем более точные сигнатуры SQL-инъекций.
-const ATTACK_PATTERNS = [
-  /'\s*(\bOR\b|\bAND\b)\s+[\d\w'"]+\s*=\s*[\d\w'"]+/i,  // ' OR 1=1 — только после кавычки
-  /union\s+all\s+select|union\s+select\s+null/i,          // UNION SELECT с типичными паттернами
-  /select\s+[\w\s,*]+\s+from\s+\w+\s+where/i,            // SELECT...FROM...WHERE — полная форма
-  /;\s*(drop|truncate|delete)\s+table/i,                   // ; DROP TABLE
-  /exec\s*\(\s*[@\w]/i,                                    // EXEC(@var)
-  /<\s*script[\s>]/i,                                      // XSS: <script>
-  /javascript\s*:/i,
-  /\/etc\/passwd/i,                                        // Path traversal
-  /\.\.\/\.\.\/\.\.\//,
-  /\beval\s*\(\s*['"\`]/i,                                 // eval("...") — только со строкой
-  /base64_decode\s*\(/i,
-  /wp-admin|phpmyadmin|\.env$|\.git\/config/i,             // Сканирование
-];
-
-function containsAttack(str) {
-  if (!str || typeof str !== 'string') return false;
-  return ATTACK_PATTERNS.some(p => p.test(str));
-}
-
-function checkForAttacks(obj, depth = 0) {
-  if (depth > 5) return false;
-  if (typeof obj === 'string') return containsAttack(obj);
-  if (typeof obj === 'object' && obj !== null) {
-    return Object.values(obj).some(v => checkForAttacks(v, depth + 1));
-  }
-  return false;
-}
-
-// Главный middleware защиты
-app.use((req, res, next) => {
-  const ip = getClientIp(req);
-
-  // 1. Постоянный бан из переменной окружения
-  if (getBlockedIps().includes(ip)) {
-    console.warn(`[BLOCKED] IP ${ip}: ${req.method} ${req.path}`);
-    return res.status(403).end();
-  }
-
-  // 2. Автобан в памяти
-  const ban = autoBannedIps.get(ip);
-  if (ban) {
-    if (ban.until > Date.now()) {
-      return res.status(403).end();
-    }
-    autoBannedIps.delete(ip);
-  }
-
-  // 3. Honeypot — кто лезет в /wp-admin, /phpmyadmin и т.д. — бан навсегда в памяти
-  const honeypotPaths = ['/wp-admin', '/wp-login', '/phpmyadmin', '/.env', '/.git', '/admin.php', '/xmlrpc.php'];
-  if (honeypotPaths.some(p => req.path.startsWith(p))) {
-    autoBanIp(ip, 1440, `Honeypot: ${req.path}`); // 24 часа
-    return res.status(404).end();
-  }
-
-  // 4. Проверка на SQL-инъекции и XSS во всех входящих данных
-  const toCheck = [
-    req.path,
-    JSON.stringify(req.query),
-    JSON.stringify(req.body),
-  ].join(' ');
-
-  if (containsAttack(toCheck)) {
-    autoBanIp(ip, 60, `Атака: ${req.method} ${req.path}`);
-    console.error(`[ATTACK] IP ${ip}: ${req.method} ${req.path} | body: ${JSON.stringify(req.body)?.slice(0, 200)}`);
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  next();
-});
-
-const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',')
-  : ['http://localhost:5173', 'http://localhost:3000'];
-
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? allowedOrigins : true,
-  credentials: true
-}));
-
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
-app.use('/api/auth/', rateLimit({ windowMs: 15 * 60 * 1000, max: 30 }));
-app.use('/api/wallet/deposit', rateLimit({ windowMs: 60 * 1000, max: 10 }));
-
-// ── Верификация домена для платёжных систем и поисковиков ────────────────────
-
-// LAVA верификация
-// Добавь на Railway: LAVA_VERIFY_FILENAME и LAVA_VERIFY_TOKEN
-app.get('/:file([a-z0-9_\-]+\.html)', (req, res) => {
-  const filename = req.params.file;
-
-  // Яндекс Вебмастер: yandex_XXXXXX.html
-  // Добавь на Railway: YANDEX_VERIFY_TOKEN=6ad530c6b0deaddf
-  const yandexToken = process.env.YANDEX_VERIFY_TOKEN || '';
-  if (yandexToken && filename === `yandex_${yandexToken}.html`) {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(`<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head><body>Verification: ${yandexToken}</body></html>`);
-  }
-
-  // Google Search Console: googleXXXXXX.html
-  // Добавь на Railway: GOOGLE_VERIFY_TOKEN=ваш_токен
-  const googleToken = process.env.GOOGLE_VERIFY_TOKEN || '';
-  if (googleToken && filename === `google${googleToken}.html`) {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(`google-site-verification: google${googleToken}.html`);
-  }
-
-  // LAVA верификация
-  const lavaExpected = process.env.LAVA_VERIFY_FILENAME || '';
-  const lavaToken    = process.env.LAVA_VERIFY_TOKEN    || '';
-  if (lavaExpected && lavaToken && filename === lavaExpected) {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(lavaToken);
-  }
-
-  res.status(404).send('Not found');
-});
-
-// ── API Request Logger (должен быть ДО роутов, иначе не срабатывает) ─────────
-const { apiLogMiddleware } = require('../utils/securityLog');
-app.use(apiLogMiddleware);
-
-// ── Routes ─────────────────────────────────────────────────────────────────────
-app.use('/api/auth',       require('./routes/auth'));
-app.use('/api/products',   require('./routes/products'));
-app.use('/api/deals',      require('./routes/deals'));
-app.use('/api/wallet',     require('./routes/wallet'));
-app.use('/api/users',      require('./routes/users'));
-app.use('/api/categories', require('./routes/categories'));
-app.use('/api/admin',      require('./routes/admin'));
-app.use('/api/referral',   require('./routes/referral'));
-app.use('/api/messages',   require('./routes/messages'));
-
-app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
-
-
-// ── Telegram bot (webhook mode) ───────────────────────────────────────────────
-const { getBot, handleUpdate, handleCallback } = require('./utils/bot');
-
-app.post('/api/tg-webhook/:token', (req, res) => {
-  res.sendStatus(200);
-  if (req.params.token !== process.env.TELEGRAM_BOT_TOKEN) return;
-  const update = req.body;
-  if (update.callback_query) {
-    handleCallback(update).catch(e => console.error('[Webhook:callback]', e.message));
-  } else {
-    handleUpdate(update).catch(e => {
-      if (e.code === 'ECONNRESET' || e.message?.includes('ECONNRESET')) return;
-      console.error('[Webhook] error:', e.message);
-    });
+    res.json({ ok: true, message: `Запрос создан. Вы получите $${amtReceive.toFixed(2)} (после комиссии 5%). Обработка в течение 24ч.` });
+  } catch (e) {
+    console.error('Withdraw error:', e);
+    res.status(500).json({ error: 'Ошибка' });
   }
 });
 
-// Инициализация Telegram бота
-console.log('[ENV] TELEGRAM_BOT_TOKEN:', process.env.TELEGRAM_BOT_TOKEN ? 'SET (' + process.env.TELEGRAM_BOT_TOKEN.slice(0,10) + '...)' : 'NOT SET');
-console.log('[ENV] BACKEND_URL:', process.env.BACKEND_URL || 'NOT SET');
-if (process.env.TELEGRAM_BOT_TOKEN) {
-  console.log('[Bot] Token found, initializing in 2s...');
-  setTimeout(() => getBot(), 2000);
-} else {
-  console.log('[Bot] TELEGRAM_BOT_TOKEN not set, skipping bot init');
-}
-
-// ── Static frontend ────────────────────────────────────────────────────────────
-const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
-app.use(express.static(frontendDist));
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(frontendDist, 'index.html'));
-  }
-});
-
-// ── Cron jobs ─────────────────────────────────────────────────────────────────
-const { completeDeal } = require('./routes/deals');
-const { queryAll, run } = require('./models/db');
-
-cron.schedule('*/15 * * * *', async () => {
+// ── POST /wallet/withdraw/rukassa ────────────────────────────────────────────
+router.post('/withdraw/rukassa', auth, async (req, res) => {
   try {
-    const now     = Math.floor(Date.now() / 1000);
-    const expired = await queryAll(
-      `SELECT * FROM deals WHERE status = 'active' AND auto_complete_at IS NOT NULL AND auto_complete_at <= $1`,
-      [now]
+    const { amount, account, method = 'sbp' } = req.body;
+    const amt = parseFloat(amount);
+
+    if (!amt || amt < 5)       return res.status(400).json({ error: 'Минимальный вывод $5' });
+    if (!account?.trim())      return res.status(400).json({ error: 'Укажите номер телефона (СБП) или карты' });
+    if (!rukassa.isConfigured()) return res.status(400).json({ error: 'RuKassa не настроен' });
+
+    const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.userId]);
+    if (parseFloat(user.balance) < amt) return res.status(400).json({ error: 'Недостаточно средств' });
+
+    const since24h = Math.floor(Date.now() / 1000) - 86400;
+    const withdrawn24h = await queryOne(
+      `SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE user_id=$1 AND type='withdrawal' AND created_at>=$2`,
+      [req.userId, since24h]
     );
-    if (expired.length) console.log(`[Cron] Auto-completing ${expired.length} deal(s)`);
-    for (const deal of expired) {
-      try { await completeDeal(deal, 'auto'); }
-      catch (e) { console.error(`[Cron] Deal ${deal.id} error:`, e.message); }
+    const alreadyWithdrawn = parseFloat(withdrawn24h?.total) || 0;
+    const DAILY_LIMIT = parseFloat(process.env.DAILY_WITHDRAW_LIMIT || '500');
+    if (alreadyWithdrawn + amt > DAILY_LIMIT) {
+      return res.status(400).json({ error: `Превышен дневной лимит $${DAILY_LIMIT}. Доступно: $${Math.max(0, DAILY_LIMIT - alreadyWithdrawn).toFixed(2)}` });
     }
-  } catch (e) { console.error('[Cron] Error:', e.message); }
-});
 
-cron.schedule('0 * * * *', async () => {
-  try {
-    const now = Math.floor(Date.now() / 1000);
-    await run(`UPDATE users SET is_banned = 0, banned_until = NULL WHERE is_banned = 1 AND banned_until IS NOT NULL AND banned_until <= $1`, [now]);
-    await run(`UPDATE products SET is_promoted = 0, promoted_until = NULL WHERE is_promoted = 1 AND promoted_until IS NOT NULL AND promoted_until <= $1`, [now]);
-  } catch (e) { console.error('[Cron] Error:', e.message); }
-});
+    const fee        = Math.round(amt * 0.05 * 100) / 100;
+    const amtReceive = Math.round((amt - fee) * 100) / 100;
+    const orderId    = `rkpay_${req.userId}_${Date.now()}`;
 
-// ── Hourly AI Report → Telegram ───────────────────────────────────────────────
-require('./utils/hourlyReport');
-
-// ── Site Monitor (3 раза в день) ─────────────────────────────────────────────
-require('./utils/monitor');
-
-// ── Init DB then start ────────────────────────────────────────────────────────
-const { initSchema } = require('./models/db');
-const { connectMongo } = require('./models/mongo');
-
-// MongoDB подключается параллельно — не блокирует старт
-connectMongo().catch(() => {});
-
-const PORT = process.env.PORT || 5000;
-
-initSchema()
-  .then(async () => {
-    // Миграция колонок для AI Admin (выполняется автоматически при каждом старте)
-    await run(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_moderated    INTEGER DEFAULT 0`).catch(() => {});
-    await run(`ALTER TABLE messages  ADD COLUMN IF NOT EXISTS image           TEXT DEFAULT NULL`).catch(() => {});
-    await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS seller_level    TEXT DEFAULT 'newcomer'`).catch(() => {});
-    await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS level_override   INTEGER DEFAULT 0`).catch(() => {});
-    // Реферальная система
-    await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS ref_code         TEXT DEFAULT NULL`).catch(() => {});
-    await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS ref_by           TEXT DEFAULT NULL`).catch(() => {});
-    await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS is_partner       INTEGER DEFAULT 0`).catch(() => {});
-    await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS partner_percent  INTEGER DEFAULT 5`).catch(() => {});
-    await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS partner_earned   REAL DEFAULT 0`).catch(() => {});
-    await run(`CREATE TABLE IF NOT EXISTS referral_rewards (
-      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      partner_id TEXT REFERENCES users(id),
-      referred_user_id TEXT REFERENCES users(id),
-      deal_id TEXT,
-      amount REAL DEFAULT 0,
-      created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
-    )`).catch(() => {});
-    await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ref_code ON users(ref_code) WHERE ref_code IS NOT NULL`).catch(() => {});
-    await run(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_price_advised INTEGER DEFAULT 0`).catch(() => {});
-    await run(`ALTER TABLE users    ADD COLUMN IF NOT EXISTS ai_reactivated   INTEGER DEFAULT 0`).catch(() => {});
-    console.log('✅ AI Admin миграция выполнена');
-
-    // Запускаем AI Admin после миграции
-    const { init: initAiAdmin } = require('./utils/aiAdmin');
-    await initAiAdmin().catch(e => console.error('[AI Admin] Init error:', e.message));
-  })
-  .then(() => {
-    const server = http.createServer(app);
-
-    // ── WebSocket: реалтайм для админки ───────────────────────────────────────
-    const { initWs } = require('./utils/wsEvents');
-    initWs(server);
-
-    server.listen(PORT, () => {
-      console.log(`🚀 Minions Market server on port ${PORT}`);
-      if (!process.env.JWT_SECRET)          console.warn('⚠️  JWT_SECRET not set');
-      if (!process.env.TELEGRAM_BOT_TOKEN)  console.warn('⚠️  TELEGRAM_BOT_TOKEN not set');
-      if (!process.env.ADMIN_PASSWORD)      console.warn('⚠️  ADMIN_PASSWORD not set');
-      if (!process.env.ANTHROPIC_API_KEY)   console.warn('⚠️  ANTHROPIC_API_KEY not set (AI Admin disabled)');
-      if (!process.env.REPORT_CHAT_ID)      console.warn('⚠️  REPORT_CHAT_ID not set (AI Admin disabled)');
+    let txId = crypto.randomUUID();
+    await transaction(async (client) => {
+      await client.query(
+        `UPDATE users SET balance = balance - $1, total_withdrawn = total_withdrawn + $1 WHERE id = $2`,
+        [amt, req.userId]
+      );
+      await client.query(`
+        INSERT INTO transactions (id, user_id, type, amount, status, description, balance_before, balance_after, gateway_type, gateway_order_id)
+        VALUES ($1,$2,'withdrawal',$3,'pending',$4,$5,$6,'rukassa',$7)
+      `, [txId, req.userId, amtReceive,
+          `Вывод ${method === 'card' ? 'на карту' : 'СБП'}: ${account} (комиссия 5%: $${fee.toFixed(2)})`,
+          user.balance, parseFloat(user.balance) - amt, orderId]);
+      await client.query(`
+        INSERT INTO transactions (id, user_id, type, amount, status, description)
+        VALUES ($1,$2,'commission',$3,'completed',$4)
+      `, [crypto.randomUUID(), req.userId, fee, `Комиссия вывод RuKassa 5%`]);
     });
-  })
-  .catch(e => {
-    console.error('❌ DB init failed:', e.message);
-    process.exit(1);
-  });
 
-module.exports = app;
+    const payout = await rukassa.createPayout({
+      amountUsd: amtReceive,
+      account:   account.trim(),
+      method,
+      orderId,
+    });
+
+    if (!payout.ok) {
+      await run(
+        `UPDATE users SET balance = balance + $1, total_withdrawn = total_withdrawn - $1 WHERE id = $2`,
+        [amt, req.userId]
+      );
+      await run(`UPDATE transactions SET status='failed' WHERE id=$1`, [txId]);
+      return res.status(502).json({ error: `Ошибка выплаты: ${payout.error}` });
+    }
+
+    await run(
+      `UPDATE transactions SET status='processing', gateway_invoice_id=$1 WHERE id=$2`,
+      [payout.payoutId || '', txId]
+    );
+
+    notify.sendTg(process.env.REPORT_CHAT_ID,
+      `💸 <b>Выплата RuKassa</b>\n\n` +
+      `👤 @${user.username}\n` +
+      `💰 $${amt.toFixed(2)} → ${amtReceive.toFixed(2)} USD (~${Math.floor(amtReceive * rukassa.USD_TO_RUB())} RUB)\n` +
+      `📱 ${method === 'card' ? 'Карта' : 'СБП'}: ${account}\n` +
+      `🆔 ID: ${payout.payoutId || orderId}`
+    ).catch(() => {});
+
+    if (user.telegram_id) {
+      notify.sendTg(user.telegram_id,
+        `💸 <b>Вывод средств обработан</b>\n\n` +
+        `Сумма: <b>$${amtReceive.toFixed(2)}</b> (~${Math.floor(amtReceive * rukassa.USD_TO_RUB())} RUB)\n` +
+        `Метод: ${method === 'card' ? 'Банковская карта' : 'СБП'}\n` +
+        `Реквизиты: <code>${account}</code>\n\n` +
+        `⏱ Обычно зачисляется в течение 1-24 часов`
+      ).catch(() => {});
+    }
+
+    res.json({
+      ok: true,
+      message: `Выплата отправлена! Вы получите ~${Math.floor(amtReceive * rukassa.USD_TO_RUB())} RUB на ${method === 'card' ? 'карту' : 'СБП'} в течение 24 часов.`
+    });
+  } catch (e) {
+    console.error('[RuKassa withdraw]', e);
+    res.status(500).json({ error: 'Ошибка вывода' });
+  }
+});
+
+// ── POST /wallet/deposit/nowpayments ─────────────────────────────────────────
+router.post('/deposit/nowpayments', auth, async (req, res) => {
+  try {
+    const nowpayments = require('../utils/nowpayments');
+    if (!nowpayments.isConfigured()) return res.status(400).json({ error: 'NOWPayments не настроен' });
+
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount < 1) return res.status(400).json({ error: 'Минимум $1' });
+
+    const orderId = `np_${req.userId}_${Date.now()}`;
+    const result  = await nowpayments.createInvoice({
+      amount, orderId,
+      description: `Пополнение Minions Market на $${amount}`,
+    });
+
+    if (!result.ok) return res.status(502).json({ error: result.error });
+
+    const user = await queryOne('SELECT balance FROM users WHERE id = $1', [req.userId]);
+    await run(`
+      INSERT INTO transactions (id, user_id, type, amount, status, description, gateway_type, gateway_invoice_id, gateway_pay_url, gateway_order_id, balance_before)
+      VALUES ($1,$2,'deposit',$3,'pending','Пополнение NOWPayments','nowpayments',$4,$5,$6,$7)
+    `, [crypto.randomUUID(), req.userId, amount, result.invoiceId, result.payUrl, orderId, user?.balance || 0]);
+
+    res.json({ payUrl: result.payUrl, orderId });
+  } catch(e) {
+    console.error('NOWPayments deposit error:', e);
+    res.status(500).json({ error: 'Ошибка платёжной системы' });
+  }
+});
+
+// ── POST /wallet/webhook/nowpayments ─────────────────────────────────────────
+router.post('/webhook/nowpayments', async (req, res) => {
+  try {
+    const nowpayments = require('../utils/nowpayments');
+    const signature   = req.headers['x-nowpayments-sig'];
+
+    if (!nowpayments.verifyWebhook(req.body, signature)) {
+      console.warn('[NOWPayments] Invalid webhook signature');
+      return res.status(400).send('Invalid signature');
+    }
+
+    const { payment_status, order_id } = req.body;
+    if (!['finished', 'confirmed', 'partially_paid'].includes(payment_status)) {
+      return res.send('ok');
+    }
+
+    const tx = await queryOne('SELECT * FROM transactions WHERE gateway_order_id = $1', [order_id]);
+    if (!tx || tx.status === 'completed') return res.send('ok');
+
+    await creditUser(tx);
+    res.send('ok');
+  } catch(e) {
+    console.error('[NOWPayments] webhook error:', e.message);
+    res.status(500).send('error');
+  }
+});
+
+// ── POST /wallet/deposit/crystalpay ──────────────────────────────────────────
+router.post('/deposit/crystalpay', auth, async (req, res) => {
+  try {
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount < MIN_DEPOSIT) return res.status(400).json({ error: `Минимум $${MIN_DEPOSIT}` });
+    if (!crystalpay.isConfigured()) return res.status(400).json({ error: 'CrystalPAY не настроен' });
+
+    const orderId    = `crp_${req.userId}_${Date.now()}`;
+    const hookUrl    = `${process.env.BACKEND_URL || ''}/api/wallet/webhook/crystalpay`;
+    const successUrl = `${process.env.FRONTEND_URL || ''}/wallet?success=1`;
+
+    const result = await crystalpay.createInvoice({ amount, orderId, hookUrl, successUrl });
+    if (!result.ok) return res.status(502).json({ error: result.error });
+
+    const user = await queryOne('SELECT balance FROM users WHERE id = $1', [req.userId]);
+    await run(`
+      INSERT INTO transactions (id, user_id, type, amount, status, description, gateway_type, gateway_invoice_id, gateway_pay_url, gateway_order_id, balance_before)
+      VALUES ($1,$2,'deposit',$3,'pending','Пополнение CrystalPAY','crystalpay',$4,$5,$6,$7)
+    `, [crypto.randomUUID(), req.userId, amount, result.invoiceId, result.payUrl, orderId, user?.balance || 0]);
+
+    res.json({ payUrl: result.payUrl, orderId });
+  } catch (e) {
+    console.error('CrystalPAY deposit error:', e);
+    res.status(500).json({ error: 'Ошибка платёжной системы' });
+  }
+});
+
+// ── POST /wallet/webhook/crystalpay ──────────────────────────────────────────
+router.post('/webhook/crystalpay', async (req, res) => {
+  try {
+    if (!crystalpay.verifyWebhook(req.body)) {
+      console.warn('[CrystalPAY] Invalid webhook signature');
+      return res.status(400).send('Invalid signature');
+    }
+
+    const { state, extra } = req.body;
+    if (state !== 'payed') return res.send('ok');
+
+    const tx = await queryOne('SELECT * FROM transactions WHERE gateway_order_id = $1', [extra]);
+    if (!tx || tx.status === 'completed') return res.send('ok');
+
+    await creditUser(tx);
+    res.send('ok');
+  } catch (e) {
+    console.error('[CrystalPAY] webhook error:', e);
+    res.status(500).send('error');
+  }
+});
+
+// ── Internal: creditUser ──────────────────────────────────────────────────────
+async function creditUser(tx) {
+  await transaction(async (client) => {
+    const txRes = await client.query(
+      `SELECT * FROM transactions WHERE id = $1 FOR UPDATE`,
+      [tx.id]
+    );
+    const lockedTx = txRes.rows[0];
+    if (!lockedTx || lockedTx.status === 'completed') return;
+
+    const userRes = await client.query('SELECT * FROM users WHERE id = $1', [tx.user_id]);
+    const user    = userRes.rows[0];
+
+    const updRes = await client.query(
+      `UPDATE users SET balance = balance + $1, total_deposited = total_deposited + $1 WHERE id = $2 RETURNING balance`,
+      [parseFloat(tx.amount), tx.user_id]
+    );
+    const newBal = parseFloat(updRes.rows[0].balance);
+
+    await client.query(
+      `UPDATE transactions SET status = 'completed', balance_before = $1, balance_after = $2 WHERE id = $3`,
+      [user.balance, newBal, tx.id]
+    );
+    notify.notifyDeposit({ ...user, balance: newBal }, tx.amount, tx.gateway_type, tx.id).catch(() => {});
+    broadcast('deposit_completed', {
+      userId: tx.user_id,
+      username: user.username,
+      amount: parseFloat(tx.amount),
+      gateway: tx.gateway_type,
+      newBalance: newBal,
+    });
+  });
+}
+
+module.exports = router;
