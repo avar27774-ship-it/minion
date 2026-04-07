@@ -89,8 +89,14 @@ async function initSchema() {
       register_ip     TEXT,
       last_login_at   BIGINT,
       created_at      BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
-      last_active     BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+      last_active     BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+      phone           TEXT UNIQUE,
+      phone_verified  INTEGER DEFAULT 0
     );
+
+    -- Добавить колонки если их нет (для существующих БД)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT UNIQUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified INTEGER DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS categories (
       id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
