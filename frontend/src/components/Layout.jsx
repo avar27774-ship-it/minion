@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Wallet, Handshake, FileText, RotateCcw, Mail, Zap, UserCircle, LogOut, Settings, Home, LayoutGrid, Plus, DollarSign, ShieldCheck, MessageCircle, Search, Bell } from './Icon'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useStore, api } from '../store'
 import { useCurrency } from '../hooks/useCurrency'
 import Radio from './Radio'
@@ -40,7 +40,7 @@ function Badge({ count }) {
   )
 }
 
-export default function Layout({ children }) {
+export default function Layout() {
   const { user, setUser, logout, refreshUser } = useStore()
   const navigate  = useNavigate()
   const location  = useLocation()
@@ -673,7 +673,7 @@ export default function Layout({ children }) {
         {(location.pathname === '/' || location.pathname === '/catalog') && (
           <OnboardingBanner />
         )}
-        {children}
+        {children ?? <Outlet />}
       </main>
 
       {/* ── Footer (desktop) ─────────────────────────────────────────────────── */}
