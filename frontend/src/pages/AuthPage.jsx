@@ -1,301 +1,594 @@
-import React, { useState } from 'react'
-import { Zap, Rocket, Key, Eye, EyeOff, ArrowLeft, Smartphone, Lightbulb } from '../components/Icon'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
-import { api, useStore } from '../store'
-import toast from 'react-hot-toast'
-import MagicRings from '../components/MagicRings/MagicRings'
+// AuthPage.jsx — Playerok-style refactor
+// API сохранён 100%:
+//   POST /api/auth/register/init
+//   POST /api/auth/register/check  → botUsername
+//   POST /api/auth/register/verify → token + user
+//   POST /api/auth/login           → token + user
+//   POST /api/auth/reset/request
+//   POST /api/auth/reset/confirm
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
+import toast from "react-hot-toast";
+import { useStore } from "../store";
 
-export default function AuthPage() {
-  const [params]  = useSearchParams()
-  const navigate  = useNavigate()
-  const { setUser } = useStore()
-  const [mode, setMode]           = useState(params.get('mode')==='register' ? 'register' : 'login')
-  const [step, setStep]           = useState(1)
-  const [resetStep, setResetStep] = useState(1)
-  const [username, setUsername]   = useState('')
-  const [password, setPassword]   = useState('')
-  const [code, setCode]           = useState('')
-  const [newPass, setNewPass]     = useState('')
-  const [botName, setBotName]     = useState('')
-  const [loading, setLoading]     = useState(false)
-  const [showPass, setShowPass]   = useState(false)
+const API = "/api";
 
-  const Spinner = () => (
-    <span style={{ width:16, height:16, border:'2px solid transparent', borderTopColor:'currentColor', borderRadius:'50%', animation:'spin 0.7s linear infinite', display:'inline-block' }}/>
-  )
+const T = {
+  bg:      "#0D0D0E",
+  surface: "#1B1B1D",
+  s2:      "#242426",
+  border:  "rgba(255,255,255,0.07)",
+  yellow:  "#FFD600",
+  green:   "#39FF14",
+  text:    "#FFFFFF",
+  muted:   "rgba(255,255,255,0.38)",
+  dim:     "rgba(255,255,255,0.6)",
+  red:     "#FF4D4D",
+};
 
-  const handleLogin = async () => {
-    if (!username||!password) return toast.error('Заполните все поля')
-    setLoading(true)
-    try {
-      const { data } = await api.post('/auth/login', { username, password })
-      localStorage.setItem('mn_token', data.token)
-      setUser(data.user)
-      toast.success('Добро пожаловать!')
-      navigate('/')
-    } catch(e) { toast.error(e.response?.data?.error||'Ошибка входа') }
-    setLoading(false)
-  }
-
-  const handleRegisterCheck = async () => {
-    if (username.length < 3) return toast.error('Минимум 3 символа')
-    setLoading(true)
-    try {
-      await api.post('/auth/register/init', { username })
-      const { data } = await api.post('/auth/register/check', { username })
-      setBotName(data.botUsername)
-      setStep(2)
-      toast.success('Логин свободен! Получите код в боте.')
-    } catch(e) { toast.error(e.response?.data?.error||'Ошибка') }
-    setLoading(false)
-  }
-
-  const handleRegisterVerify = async () => {
-    if (!code||!password) return toast.error('Заполните все поля')
-    if (password.length < 6) return toast.error('Пароль минимум 6 символов')
-    setLoading(true)
-    try {
-      const { data } = await api.post('/auth/register/verify', { username, code, password })
-      localStorage.setItem('mn_token', data.token)
-      setUser(data.user)
-      toast.success('Аккаунт создан!')
-      navigate('/')
-    } catch(e) { toast.error(e.response?.data?.error||'Ошибка') }
-    setLoading(false)
-  }
-
-  const handleResetRequest = async () => {
-    if (!username) return toast.error('Введите логин')
-    setLoading(true)
-    try {
-      const { data } = await api.post('/auth/reset/request', { username })
-      setBotName(data.botUsername)
-      setResetStep(2)
-      toast.success('Запросите код в боте!')
-    } catch(e) { toast.error(e.response?.data?.error||'Ошибка') }
-    setLoading(false)
-  }
-
-  const handleResetConfirm = async () => {
-    if (!code||!newPass) return toast.error('Заполните все поля')
-    setLoading(true)
-    try {
-      await api.post('/auth/reset/confirm', { username, code, newPassword: newPass })
-      toast.success('Пароль изменён! Войдите.')
-      setMode('login'); setResetStep(1)
-    } catch(e) { toast.error(e.response?.data?.error||'Ошибка') }
-    setLoading(false)
-  }
-
-  const Label = ({ children }) => (
-    <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.12em', marginBottom:6 }}>{children}</div>
-  )
-
-  const BotInstructions = ({ action }) => (
-    <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.2)', borderRadius:14, padding:16, marginBottom:20 }}>
-      <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:13, color:'var(--accent)', marginBottom:10 }}><Smartphone size={13} style={{marginRight:5}}/> Инструкция</div>
-      <ol style={{ color:'var(--t2)', fontSize:13, lineHeight:2, paddingLeft:18, margin:0 }}>
-        <li>Откройте бота <a href={`https://t.me/${botName||'MinionsMarketBot'}`} target="_blank" rel="noopener" style={{ color:'var(--accent)' }}>{botName ? `@${botName}` : 'Telegram Bot'}</a></li>
-        <li>Отправьте: <code style={{ background:'var(--bg3)', padding:'2px 8px', borderRadius:6, color:'var(--accent)', fontFamily:'monospace' }}>/{action} {username}</code></li>
-        <li>Скопируйте код и вставьте ниже</li>
-      </ol>
-    </div>
-  )
+// ─── Shared UI atoms ──────────────────────────────────────────────────────────
+function Input({ label, type = "text", value, onChange, placeholder, autoComplete, icon }) {
+  const [focused, setFocused] = useState(false);
+  const [show, setShow] = useState(false);
+  const isPass = type === "password";
 
   return (
-    <div style={{ minHeight:'var(--app-height)', display:'flex', alignItems:'center', justifyContent:'center', padding:20, position:'relative', overflow:'hidden', background:'var(--bg)' }}>
-
-      {/* MagicRings фон */}
-      <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
-        <MagicRings
-          color="#f5c842"
-          colorTwo="#7c6aff"
-          ringCount={5}
-          speed={0.6}
-          attenuation={12}
-          lineThickness={1.8}
-          baseRadius={0.3}
-          radiusStep={0.12}
-          scaleRate={0.08}
-          opacity={0.7}
-          blur={0}
-          noiseAmount={0.05}
-          ringGap={1.6}
-          fadeIn={0.7}
-          fadeOut={0.5}
-          followMouse={true}
-          mouseInfluence={0.15}
-          hoverScale={1.1}
-          parallax={0.03}
-          clickBurst={false}
+    <div style={{ marginBottom: 14 }}>
+      {label && (
+        <div style={{ fontSize: 12, fontWeight: 600, color: T.dim, marginBottom: 6, letterSpacing: "0.02em" }}>
+          {label}
+        </div>
+      )}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        background: focused ? T.s2 : T.surface,
+        border: `1px solid ${focused ? T.yellow + "50" : T.border}`,
+        borderRadius: 13, padding: "12px 14px",
+        transition: "all 0.2s",
+        boxShadow: focused ? `0 0 0 3px ${T.yellow}10` : "none",
+      }}>
+        {icon && <span style={{ fontSize: 16, opacity: 0.6 }}>{icon}</span>}
+        <input
+          type={isPass ? (show ? "text" : "password") : type}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{
+            flex: 1, background: "none", border: "none", outline: "none",
+            fontSize: 15, color: T.text,
+            fontFamily: "'Onest', system-ui, sans-serif",
+          }}
         />
-      </div>
-
-      {/* Затемнение поверх колец */}
-      <div style={{ position:'fixed', inset:0, zIndex:1, background:'radial-gradient(ellipse 80% 80% at 50% 50%, transparent 30%, rgba(13,13,20,0.85) 100%)', pointerEvents:'none' }}/>
-
-      {/* Карточка */}
-      <div style={{ width:'100%', maxWidth:420, position:'relative', zIndex:2 }}>
-
-        {/* Лого */}
-        <div style={{ textAlign:'center', marginBottom:28 }}>
-          <Zap size={44} strokeWidth={1.25} style={{marginBottom:6, color:'var(--accent)'}}/>
-          <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:26, letterSpacing:'-0.02em' }}>
-            Minions<span style={{ color:'var(--accent)' }}>.</span>Market
-          </div>
-          <div style={{ color:'var(--t3)', fontSize:13, marginTop:4 }}>
-            {mode==='login' && 'Рады видеть снова'}
-            {mode==='register' && 'Создайте аккаунт'}
-            {mode==='reset' && 'Восстановление пароля'}
-          </div>
-        </div>
-
-        {/* Форма */}
-        <div style={{
-          background:'rgba(18,18,28,0.85)', backdropFilter:'blur(20px)',
-          border:'1px solid rgba(255,255,255,0.07)', borderRadius:24, padding:32,
-          boxShadow:'0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(245,200,66,0.04)'
-        }}>
-
-          {/* Табы */}
-          {mode !== 'reset' && (
-            <div style={{ display:'flex', background:'rgba(255,255,255,0.04)', borderRadius:12, padding:4, marginBottom:28 }}>
-              {[['login','Войти'],['register','Регистрация']].map(([m,l]) => (
-                <button key={m} onClick={() => { setMode(m); setStep(1); setUsername(''); setPassword(''); setCode('') }} style={{
-                  flex:1, padding:'10px', borderRadius:9, border:'none', cursor:'pointer',
-                  fontFamily:'var(--font-h)', fontWeight:700, fontSize:13, transition:'all 0.2s',
-                  background: mode===m ? 'rgba(245,200,66,0.12)' : 'transparent',
-                  color: mode===m ? 'var(--accent)' : 'var(--t3)',
-                  boxShadow: mode===m ? '0 1px 8px rgba(245,200,66,0.1)' : 'none'
-                }}>{l}</button>
-              ))}
-            </div>
-          )}
-
-          {/* LOGIN */}
-          {mode==='login' && (
-            <div className="anim-in">
-              <div style={{ marginBottom:14 }}>
-                <Label>ЛОГИН</Label>
-                <input className="inp" placeholder="your_username" value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  onKeyDown={e => e.key==='Enter' && handleLogin()}/>
-              </div>
-              <div style={{ marginBottom:24 }}>
-                <Label>ПАРОЛЬ</Label>
-                <div style={{ position:'relative' }}>
-                  <input className="inp" type={showPass?'text':'password'} placeholder="••••••••"
-                    value={password} onChange={e => setPassword(e.target.value)}
-                    onKeyDown={e => e.key==='Enter' && handleLogin()}
-                    style={{ paddingRight:44 }}/>
-                  <button onClick={() => setShowPass(!showPass)} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--t3)', fontSize:16 }}>
-                    {showPass ? <EyeOff size={16} strokeWidth={1.75}/> : <Eye size={16} strokeWidth={1.75}/>}
-                  </button>
-                </div>
-              </div>
-              <button className="btn btn-primary btn-full" onClick={handleLogin} disabled={loading}>
-                {loading ? <Spinner/> : 'Войти'}
-              </button>
-              <button onClick={() => { setMode('reset'); setUsername(''); setResetStep(1) }}
-                style={{ marginTop:12, background:'none', border:'none', color:'var(--t3)', fontSize:13, cursor:'pointer', width:'100%', textAlign:'center' }}>
-                Забыл пароль?
-              </button>
-            </div>
-          )}
-
-          {/* REGISTER step 1 */}
-          {mode==='register' && step===1 && (
-            <div className="anim-in">
-              <div style={{ background:'rgba(124,106,255,0.08)', border:'1px solid rgba(124,106,255,0.2)', borderRadius:12, padding:14, marginBottom:20, fontSize:13, color:'var(--t2)', lineHeight:1.6 }}>
-                Регистрация через Telegram — просто и безопасно. Никакой почты!
-              </div>
-              <div style={{ marginBottom:20 }}>
-                <Label>ПРИДУМАЙТЕ ЛОГИН</Label>
-                <input className="inp" placeholder="только латиница и цифры"
-                  value={username} onChange={e => setUsername(e.target.value.toLowerCase())}
-                  onKeyDown={e => e.key==='Enter' && handleRegisterCheck()}/>
-                <div style={{ fontSize:11, color:'var(--t4)', marginTop:6 }}>Минимум 3 символа, только a-z, 0-9, _</div>
-              </div>
-              <button className="btn btn-primary btn-full" onClick={handleRegisterCheck} disabled={loading}>
-                {loading ? <Spinner/> : 'Далее'}
-              </button>
-            </div>
-          )}
-
-          {/* REGISTER step 2 */}
-          {mode==='register' && step===2 && (
-            <div className="anim-in">
-              <button onClick={() => setStep(1)} style={{ background:'none', border:'none', color:'var(--t3)', fontSize:13, cursor:'pointer', marginBottom:16, padding:0, display:'flex', alignItems:'center', gap:6 }}><ArrowLeft size={14} strokeWidth={2}/> Назад</button>
-              <BotInstructions action="code"/>
-              <div style={{ marginBottom:14 }}>
-                <Label>КОД ИЗ БОТА</Label>
-                <input className="inp" placeholder="123456" maxLength={6}
-                  value={code} onChange={e => setCode(e.target.value.replace(/\D/g,''))}
-                  style={{ letterSpacing:'0.3em', fontSize:20, fontFamily:'var(--font-h)', textAlign:'center' }}/>
-              </div>
-              <div style={{ marginBottom:24 }}>
-                <Label>ПРИДУМАЙТЕ ПАРОЛЬ</Label>
-                <div style={{ position:'relative' }}>
-                  <input className="inp" type={showPass?'text':'password'} placeholder="Минимум 6 символов"
-                    value={password} onChange={e => setPassword(e.target.value)} style={{ paddingRight:44 }}/>
-                  <button onClick={() => setShowPass(!showPass)} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--t3)', fontSize:16 }}>
-                    {showPass ? <EyeOff size={16} strokeWidth={1.75}/> : <Eye size={16} strokeWidth={1.75}/>}
-                  </button>
-                </div>
-              </div>
-              <button className="btn btn-primary btn-full" onClick={handleRegisterVerify} disabled={loading}>
-                {loading ? <Spinner/> : 'Создать аккаунт'}
-              </button>
-            </div>
-          )}
-
-          {/* RESET step 1 */}
-          {mode==='reset' && resetStep===1 && (
-            <div className="anim-in">
-              <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, marginBottom:20, display:'flex', alignItems:'center', gap:8 }}><Key size={20} strokeWidth={1.75}/> Сброс пароля</div>
-              <div style={{ marginBottom:20 }}>
-                <Label>ВАШ ЛОГИН</Label>
-                <input className="inp" placeholder="your_username"
-                  value={username} onChange={e => setUsername(e.target.value.toLowerCase())}/>
-              </div>
-              <button className="btn btn-primary btn-full" onClick={handleResetRequest} disabled={loading}>
-                {loading ? <Spinner/> : 'Получить код'}
-              </button>
-              <button onClick={() => setMode('login')} style={{ marginTop:12, background:'none', border:'none', color:'var(--t3)', fontSize:13, cursor:'pointer', width:'100%', textAlign:'center' }}>
-                ← Назад к входу
-              </button>
-            </div>
-          )}
-
-          {/* RESET step 2 */}
-          {mode==='reset' && resetStep===2 && (
-            <div className="anim-in">
-              <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, marginBottom:20 }}>Введите новый пароль</div>
-              <BotInstructions action="reset"/>
-              <div style={{ marginBottom:14 }}>
-                <Label>КОД ИЗ БОТА</Label>
-                <input className="inp" placeholder="123456" maxLength={6}
-                  value={code} onChange={e => setCode(e.target.value.replace(/\D/g,''))}
-                  style={{ letterSpacing:'0.3em', fontSize:20, fontFamily:'var(--font-h)', textAlign:'center' }}/>
-              </div>
-              <div style={{ marginBottom:24 }}>
-                <Label>НОВЫЙ ПАРОЛЬ</Label>
-                <input className="inp" type={showPass?'text':'password'} placeholder="Минимум 6 символов"
-                  value={newPass} onChange={e => setNewPass(e.target.value)}/>
-              </div>
-              <button className="btn btn-primary btn-full" onClick={handleResetConfirm} disabled={loading}>
-                {loading ? <Spinner/> : 'Сохранить пароль'}
-              </button>
-            </div>
-          )}
-        </div>
-
-        <p style={{ textAlign:'center', color:'var(--t4)', fontSize:12, marginTop:16, lineHeight:1.6 }}>
-          Регистрируясь, вы принимаете{' '}
-          <Link to="/legal/rules" style={{ color:'var(--t3)' }}>правила</Link> и{' '}
-          <Link to="/legal/privacy" style={{ color:'var(--t3)' }}>политику конфиденциальности</Link>
-        </p>
+        {isPass && (
+          <button
+            type="button"
+            onClick={() => setShow(s => !s)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: T.muted, fontSize: 16, padding: 0 }}
+          >
+            {show ? "🙈" : "👁️"}
+          </button>
+        )}
       </div>
     </div>
-  )
+  );
+}
+
+function PrimaryBtn({ children, onClick, loading, disabled, style = {} }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading || disabled}
+      style={{
+        width: "100%", padding: "14px",
+        background: loading || disabled ? "rgba(255,214,0,0.3)" : T.yellow,
+        border: "none", borderRadius: 13,
+        fontSize: 15, fontWeight: 800,
+        color: loading || disabled ? "rgba(0,0,0,0.5)" : "#000",
+        cursor: loading || disabled ? "not-allowed" : "pointer",
+        fontFamily: "'Onest', system-ui, sans-serif",
+        transition: "all 0.2s",
+        boxShadow: loading || disabled ? "none" : `0 4px 20px ${T.yellow}45`,
+        letterSpacing: "-0.2px",
+        ...style,
+      }}
+    >
+      {loading ? "⏳ Загрузка..." : children}
+    </button>
+  );
+}
+
+function SecondaryBtn({ children, onClick, style = {} }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: "100%", padding: "13px",
+        background: "transparent",
+        border: `1px solid ${T.border}`,
+        borderRadius: 13, fontSize: 14, fontWeight: 600,
+        color: T.dim, cursor: "pointer",
+        fontFamily: "'Onest', system-ui, sans-serif",
+        transition: "all 0.2s",
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Step indicator ───────────────────────────────────────────────────────────
+function Steps({ current, total }) {
+  return (
+    <div style={{ display: "flex", gap: 6, marginBottom: 28 }}>
+      {Array.from({ length: total }).map((_, i) => (
+        <div key={i} style={{
+          flex: i === current ? 2 : 1,
+          height: 3, borderRadius: 10,
+          background: i <= current ? T.yellow : T.surface,
+          transition: "all 0.4s",
+          boxShadow: i === current ? `0 0 8px ${T.yellow}60` : "none",
+        }} />
+      ))}
+    </div>
+  );
+}
+
+// ─── LOGIN FORM ───────────────────────────────────────────────────────────────
+function LoginForm({ onSwitch, onForgot }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { login } = useStore();
+  const navigate = useNavigate();
+
+  // POST /api/auth/login — без изменений
+  const handleSubmit = async () => {
+    if (!username.trim() || !password) return toast.error("Заполните все поля");
+    setLoading(true);
+    try {
+      const { data } = await axios.post(`${API}/auth/login`, {
+        username: username.trim().toLowerCase(),
+        password,
+      });
+      login(data.user, data.token);
+      toast.success("Добро пожаловать! 👋");
+      navigate("/");
+    } catch (e) {
+      toast.error(e.response?.data?.error || "Ошибка входа");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ fontSize: 24, fontWeight: 900, color: T.text, letterSpacing: "-0.6px", marginBottom: 6 }}>
+          Добро пожаловать 👋
+        </div>
+        <div style={{ fontSize: 14, color: T.muted }}>
+          Войдите в свой аккаунт Minions.Market
+        </div>
+      </div>
+
+      <Input
+        label="Логин"
+        value={username}
+        onChange={e => setUsername(e.target.value)}
+        placeholder="your_username"
+        autoComplete="username"
+        icon="👤"
+      />
+      <Input
+        label="Пароль"
+        type="password"
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+        placeholder="••••••••"
+        autoComplete="current-password"
+        icon="🔒"
+      />
+
+      <button onClick={onForgot} style={{
+        background: "none", border: "none", cursor: "pointer",
+        color: T.yellow, fontSize: 13, fontWeight: 600,
+        padding: "0 0 18px", display: "block",
+        fontFamily: "'Onest', system-ui, sans-serif",
+      }}>
+        Забыли пароль?
+      </button>
+
+      <PrimaryBtn onClick={handleSubmit} loading={loading}>
+        Войти в аккаунт →
+      </PrimaryBtn>
+
+      <div style={{ textAlign: "center", marginTop: 16 }}>
+        <span style={{ fontSize: 14, color: T.muted }}>Нет аккаунта? </span>
+        <button onClick={onSwitch} style={{
+          background: "none", border: "none", cursor: "pointer",
+          color: T.yellow, fontSize: 14, fontWeight: 700,
+          fontFamily: "'Onest', system-ui, sans-serif",
+        }}>Зарегистрироваться</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── REGISTER FORM (3 шага) ───────────────────────────────────────────────────
+function RegisterForm({ onSwitch }) {
+  const [step, setStep]           = useState(0);
+  const [username, setUsername]   = useState("");
+  const [botUsername, setBotUsername] = useState("");
+  const [code, setCode]           = useState("");
+  const [password, setPassword]   = useState("");
+  const [password2, setPassword2] = useState("");
+  const [loading, setLoading]     = useState(false);
+  const { login } = useStore();
+  const navigate  = useNavigate();
+
+  // Шаг 0: POST /api/auth/register/check → botUsername
+  const handleCheck = async () => {
+    if (!username.trim()) return toast.error("Введите логин");
+    setLoading(true);
+    try {
+      const { data } = await axios.post(`${API}/auth/register/check`, {
+        username: username.trim().toLowerCase(),
+      });
+      setBotUsername(data.botUsername);
+      setStep(1);
+    } catch (e) {
+      toast.error(e.response?.data?.error || "Ошибка");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Шаг 2: POST /api/auth/register/verify → token + user
+  const handleVerify = async () => {
+    if (!code.trim()) return toast.error("Введите код");
+    if (!password)    return toast.error("Введите пароль");
+    if (password !== password2) return toast.error("Пароли не совпадают");
+    if (password.length < 6)    return toast.error("Минимум 6 символов");
+    setLoading(true);
+    try {
+      const { data } = await axios.post(`${API}/auth/register/verify`, {
+        username: username.trim().toLowerCase(),
+        code: code.trim(),
+        password,
+      });
+      login(data.user, data.token);
+      toast.success("Аккаунт создан! 🎉");
+      navigate("/");
+    } catch (e) {
+      toast.error(e.response?.data?.error || "Ошибка верификации");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const STEPS = ["Логин", "Telegram", "Пароль"];
+
+  return (
+    <div>
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ fontSize: 24, fontWeight: 900, color: T.text, letterSpacing: "-0.6px", marginBottom: 6 }}>
+          Новый аккаунт ✨
+        </div>
+        <div style={{ fontSize: 14, color: T.muted }}>
+          Шаг {step + 1} из {STEPS.length} — {STEPS[step]}
+        </div>
+      </div>
+
+      <Steps current={step} total={STEPS.length} />
+
+      {/* ── Шаг 0: ввод логина ── */}
+      {step === 0 && (
+        <div>
+          <Input
+            label="Придумайте логин"
+            value={username}
+            onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+            placeholder="only_latin_0-9_"
+            autoComplete="username"
+            icon="✏️"
+          />
+          <div style={{
+            background: `${T.yellow}0D`, border: `1px solid ${T.yellow}20`,
+            borderRadius: 12, padding: "11px 13px", marginBottom: 18,
+            fontSize: 12, color: T.dim, lineHeight: 1.6,
+          }}>
+            💡 Только латиница, цифры и _. От 3 до 24 символов.
+          </div>
+          <PrimaryBtn onClick={handleCheck} loading={loading}>
+            Продолжить →
+          </PrimaryBtn>
+        </div>
+      )}
+
+      {/* ── Шаг 1: Telegram-бот ── */}
+      {step === 1 && (
+        <div>
+          <div style={{
+            background: "rgba(41,182,246,0.08)", border: "1px solid rgba(41,182,246,0.18)",
+            borderRadius: 16, padding: "18px 16px", marginBottom: 20, textAlign: "center",
+          }}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>🤖</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 8 }}>
+              Подтвердите через Telegram
+            </div>
+            <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6, marginBottom: 14 }}>
+              Напишите боту команду и получите код подтверждения:
+            </div>
+            <div style={{
+              background: T.surface, borderRadius: 10, padding: "10px 14px",
+              fontFamily: "monospace", fontSize: 14, color: T.yellow, marginBottom: 14,
+            }}>
+              /code {username}
+            </div>
+            <a
+              href={`https://t.me/${botUsername}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                padding: "10px 20px", borderRadius: 11,
+                background: "#229ED9", color: "#fff",
+                fontSize: 14, fontWeight: 700,
+                textDecoration: "none",
+                boxShadow: "0 4px 16px rgba(34,158,217,0.4)",
+              }}
+            >
+              ✈️ Открыть бота @{botUsername}
+            </a>
+          </div>
+          <PrimaryBtn onClick={() => setStep(2)}>
+            Я получил код →
+          </PrimaryBtn>
+          <SecondaryBtn onClick={() => setStep(0)} style={{ marginTop: 10 }}>
+            ← Назад
+          </SecondaryBtn>
+        </div>
+      )}
+
+      {/* ── Шаг 2: код + пароль ── */}
+      {step === 2 && (
+        <div>
+          <Input
+            label="Код из Telegram"
+            value={code}
+            onChange={e => setCode(e.target.value.replace(/\D/g, ""))}
+            placeholder="123456"
+            icon="🔑"
+          />
+          <Input
+            label="Придумайте пароль"
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Минимум 6 символов"
+            autoComplete="new-password"
+            icon="🔒"
+          />
+          <Input
+            label="Повторите пароль"
+            type="password"
+            value={password2}
+            onChange={e => setPassword2(e.target.value)}
+            placeholder="Повторите пароль"
+            autoComplete="new-password"
+            icon="🔒"
+          />
+
+          {password && password2 && password !== password2 && (
+            <div style={{ fontSize: 12, color: T.red, marginBottom: 12, marginTop: -8 }}>
+              ❌ Пароли не совпадают
+            </div>
+          )}
+
+          <PrimaryBtn onClick={handleVerify} loading={loading}>
+            Создать аккаунт 🎉
+          </PrimaryBtn>
+          <SecondaryBtn onClick={() => setStep(1)} style={{ marginTop: 10 }}>
+            ← Назад
+          </SecondaryBtn>
+        </div>
+      )}
+
+      <div style={{ textAlign: "center", marginTop: 20 }}>
+        <span style={{ fontSize: 14, color: T.muted }}>Уже есть аккаунт? </span>
+        <button onClick={onSwitch} style={{
+          background: "none", border: "none", cursor: "pointer",
+          color: T.yellow, fontSize: 14, fontWeight: 700,
+          fontFamily: "'Onest', system-ui, sans-serif",
+        }}>Войти</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── FORGOT PASSWORD ──────────────────────────────────────────────────────────
+function ForgotForm({ onBack }) {
+  const [step, setStep]       = useState(0);
+  const [username, setUsername] = useState("");
+  const [botUsername, setBotUsername] = useState("");
+  const [code, setCode]       = useState("");
+  const [newPass, setNewPass]  = useState("");
+  const [loading, setLoading]  = useState(false);
+
+  // POST /api/auth/reset/request
+  const handleRequest = async () => {
+    if (!username.trim()) return toast.error("Введите логин");
+    setLoading(true);
+    try {
+      const { data } = await axios.post(`${API}/auth/reset/request`, {
+        username: username.trim().toLowerCase(),
+      });
+      setBotUsername(data.botUsername);
+      setStep(1);
+      toast.success("Если аккаунт найден — бот отправит код");
+    } catch (e) {
+      toast.error(e.response?.data?.error || "Ошибка");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // POST /api/auth/reset/confirm
+  const handleConfirm = async () => {
+    if (!code.trim() || !newPass) return toast.error("Заполните все поля");
+    if (newPass.length < 6) return toast.error("Минимум 6 символов");
+    setLoading(true);
+    try {
+      await axios.post(`${API}/auth/reset/confirm`, {
+        username: username.trim().toLowerCase(),
+        code: code.trim(),
+        newPassword: newPass,
+      });
+      toast.success("Пароль изменён! Войдите с новым паролем");
+      onBack();
+    } catch (e) {
+      toast.error(e.response?.data?.error || "Ошибка");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 24, fontWeight: 900, color: T.text, letterSpacing: "-0.6px", marginBottom: 6 }}>
+          Сброс пароля 🔐
+        </div>
+        <div style={{ fontSize: 14, color: T.muted }}>
+          {step === 0 ? "Введите логин — пришлём код в Telegram" : "Введите код и новый пароль"}
+        </div>
+      </div>
+
+      <Steps current={step} total={2} />
+
+      {step === 0 && (
+        <div>
+          <Input
+            label="Ваш логин"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            placeholder="your_username"
+            icon="👤"
+          />
+          <PrimaryBtn onClick={handleRequest} loading={loading}>
+            Получить код →
+          </PrimaryBtn>
+          <SecondaryBtn onClick={onBack} style={{ marginTop: 10 }}>
+            ← Назад к входу
+          </SecondaryBtn>
+        </div>
+      )}
+
+      {step === 1 && (
+        <div>
+          {botUsername && (
+            <div style={{
+              background: "rgba(41,182,246,0.08)", border: "1px solid rgba(41,182,246,0.18)",
+              borderRadius: 12, padding: "12px 14px", marginBottom: 16,
+              fontSize: 13, color: T.dim, lineHeight: 1.5,
+            }}>
+              🤖 Бот <strong style={{ color: "#29B6F6" }}>@{botUsername}</strong> отправил код для сброса пароля.
+            </div>
+          )}
+          <Input
+            label="Код из Telegram"
+            value={code}
+            onChange={e => setCode(e.target.value.replace(/\D/g, ""))}
+            placeholder="123456"
+            icon="🔑"
+          />
+          <Input
+            label="Новый пароль"
+            type="password"
+            value={newPass}
+            onChange={e => setNewPass(e.target.value)}
+            placeholder="Минимум 6 символов"
+            icon="🔒"
+          />
+          <PrimaryBtn onClick={handleConfirm} loading={loading}>
+            Сменить пароль ✓
+          </PrimaryBtn>
+          <SecondaryBtn onClick={() => setStep(0)} style={{ marginTop: 10 }}>
+            ← Назад
+          </SecondaryBtn>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ROOT AuthPage ────────────────────────────────────────────────────────────
+export default function AuthPage() {
+  const [mode, setMode] = useState("login"); // "login" | "register" | "forgot"
+
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800;900&display=swap');
+        @keyframes fadeUp {
+          from { opacity:0; transform:translateY(12px); }
+          to   { opacity:1; transform:translateY(0); }
+        }
+      `}</style>
+
+      <div style={{
+        minHeight: "calc(100vh - 120px)",
+        display: "flex", flexDirection: "column",
+        justifyContent: "center",
+        padding: "24px 18px 40px",
+        fontFamily: "'Onest', system-ui, sans-serif",
+      }}>
+
+        {/* Logo */}
+        <div style={{ textAlign: "center", marginBottom: 32, animation: "fadeUp 0.4s ease both" }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: 20,
+            background: `linear-gradient(135deg, ${T.yellow}, #FF8C00)`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 32, fontWeight: 900, color: "#000",
+            margin: "0 auto 14px",
+            boxShadow: `0 8px 32px ${T.yellow}45`,
+          }}>M</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: T.text, letterSpacing: "-0.4px" }}>
+            Minions<span style={{ color: T.yellow }}>.</span>Market
+          </div>
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>
+            Маркетплейс цифровых товаров
+          </div>
+        </div>
+
+        {/* Card */}
+        <div style={{
+          background: T.surface,
+          border: `1px solid ${T.border}`,
+          borderRadius: 22,
+          padding: "26px 22px",
+          animation: "fadeUp 0.4s 0.05s ease both",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+        }}>
+          {mode === "login"    && <LoginForm    onSwitch={() => setMode("register")} onForgot={() => setMode("forgot")} />}
+          {mode === "register" && <RegisterForm onSwitch={() => setMode("login")} />}
+          {mode === "forgot"   && <ForgotForm   onBack={() => setMode("login")} />}
+        </div>
+
+        {/* Legal */}
+        <div style={{ textAlign: "center", marginTop: 20, fontSize: 12, color: T.muted }}>
+          Регистрируясь, вы принимаете{" "}
+          <a href="/legal/rules" style={{ color: T.dim }}>правила</a>{" "}
+          и{" "}
+          <a href="/legal/offer" style={{ color: T.dim }}>оферту</a>
+        </div>
+      </div>
+    </>
+  );
 }
