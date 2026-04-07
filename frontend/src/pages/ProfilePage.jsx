@@ -1,535 +1,698 @@
-import React, { useState, useEffect, Component, useMemo } from 'react'
-import useMeta from '../hooks/useMeta'
-import { useParams, Link, useNavigate } from 'react-router-dom'
-import { api, useStore } from '../store'
-import toast from 'react-hot-toast'
-import ProductCard from '../components/ProductCard'
-import ProfileCard from '../components/ProfileCard/ProfileCard'
-import Aurora from '../components/Aurora/Aurora'
-import { UserCircle, Package, ShoppingCart, Calendar, Wallet, Zap, Star, Heart } from '../components/Icon'
+// ProfilePage.jsx — Playerok-style refactor
+// API сохранён 100%:
+//   GET  /api/users/:id             → { user, reviews, products }
+//   GET  /api/auth/me               → собственный профиль
+//   PUT  /api/users/me              → { bio, firstName, lastName }
+//   GET  /api/products/my/listings  → активные лоты
+//   DELETE /api/products/:id        → удалить лот
+//   GET  /api/wallet/transactions   → история для графика доходов
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import axios from "axios";
+import toast from "react-hot-toast";
+import { useStore } from "../store";
 
-// ── Detect TG Mini App ────────────────────────────────────────────────────────
-const isTG = () => !!(window.Telegram?.WebApp?.initData)
+const API = "/api";
+const T = {
+  bg:      "#0D0D0E",
+  surface: "#1B1B1D",
+  s2:      "#242426",
+  border:  "rgba(255,255,255,0.07)",
+  yellow:  "#FFD600",
+  green:   "#39FF14",
+  text:    "#FFFFFF",
+  muted:   "rgba(255,255,255,0.38)",
+  dim:     "rgba(255,255,255,0.6)",
+  red:     "#FF4D4D",
+  purple:  "#7C3AED",
+};
 
-class CardBoundary extends Component {
-  state = { error: false }
-  static getDerivedStateFromError() { return { error: true } }
-  componentDidCatch(e) { console.error('[ProfileCard crash]', e.message) }
-  render() {
-    if (this.state.error) return this.props.fallback
-    return this.props.children
-  }
+function authHeaders() {
+  return { Authorization: `Bearer ${useStore.getState().token}` };
 }
 
-const LEVELS = {
-  newcomer:    { label:'Новичок',  emoji:'🌱', color:'#6b7280', bg:'rgba(107,114,128,0.12)' },
-  experienced: { label:'Опытный',  emoji:'⭐', color:'#3b82f6', bg:'rgba(59,130,246,0.12)' },
-  pro:         { label:'Про',       emoji:'💎', color:'#8b5cf6', bg:'rgba(139,92,246,0.12)' },
-  legend:      { label:'Легенда',   emoji:'👑', color:'#f5c842', bg:'rgba(245,200,66,0.12)' },
+// ─── Stars ────────────────────────────────────────────────────────────────────
+function Stars({ rating = 5 }) {
+  return (
+    <span style={{ fontSize: 13, letterSpacing: -1 }}>
+      {[1,2,3,4,5].map(i => (
+        <span key={i} style={{ color: i <= Math.round(rating) ? T.yellow : T.muted }}>★</span>
+      ))}
+    </span>
+  );
 }
 
-function calcLevel(totalSales) {
-  const s = parseInt(totalSales) || 0
-  if (s >= 50) return 'legend'
-  if (s >= 20) return 'pro'
-  if (s >= 5)  return 'experienced'
-  return 'newcomer'
-}
+// ─── Income SVG chart ─────────────────────────────────────────────────────────
+function IncomeChart({ txs }) {
+  // Берём последние 7 дней доходов
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toDateString();
+  });
 
-// ── TG Profile — мобильный layout ────────────────────────────────────────────
-function TGProfile({ profile, products, reviews, favorites, tab, setTab, isMe, navigate, me }) {
-  const joinDate   = profile.created_at ? new Date(Number(profile.created_at) * 1000) : new Date()
-  const name       = profile.username || profile.firstName || 'Пользователь'
-  const rating     = Math.min(5, Math.max(0, parseFloat(profile.rating) || 5))
-  const stars      = Math.round(rating)
-  const reviewCount = parseInt(profile.reviewCount) || parseInt(profile.review_count) || 0
-  const totalSales  = parseInt(profile.totalSales)  || parseInt(profile.total_sales)  || 0
-  const totalPurch  = parseInt(profile.totalPurchases) || parseInt(profile.total_purchases) || 0
-  const lvlKey     = profile.seller_level || calcLevel(profile.total_sales)
-  const lvl        = LEVELS[lvlKey] || LEVELS.newcomer
-  const avatarLetter = name[0].toUpperCase()
+  const grouped = days.map(dayStr => {
+    const sum = txs
+      .filter(t => ["sale","deposit"].includes(t.type) && t.status === "completed")
+      .filter(t => new Date(t.createdAt || t.created_at * 1000).toDateString() === dayStr)
+      .reduce((acc, t) => acc + parseFloat(t.amount), 0);
+    return sum;
+  });
+
+  const maxV = Math.max(...grouped, 1);
+  const W = 300, H = 80;
+  const pts = grouped.map((v, i) =>
+    `${(i / (grouped.length - 1)) * W},${H - (v / maxV) * H}`
+  ).join(" ");
+
+  const area = [
+    `0,${H}`,
+    ...grouped.map((v, i) => `${(i / (grouped.length - 1)) * W},${H - (v / maxV) * H}`),
+    `${W},${H}`,
+  ].join(" ");
+
+  const dayLabels = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
 
   return (
-    <div style={{ paddingBottom: 8 }}>
-      {/* Шапка профиля */}
-      <div style={{
-        background: 'linear-gradient(160deg, #0d0d14 0%, #12102a 100%)',
-        padding: '24px 16px 20px', position: 'relative', overflow: 'hidden',
-      }}>
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: 'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(124,106,255,0.15) 0%, transparent 70%)',
-        }}/>
-        <div style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-          {/* Аватар */}
-          <div style={{
-            width: 72, height: 72, borderRadius: 20, flexShrink: 0,
-            background: profile.photoUrl ? 'transparent' : 'linear-gradient(135deg, var(--purple), var(--accent))',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 28, fontWeight: 800, fontFamily: 'var(--font-h)', color: '#0d0d14',
-            border: '2px solid rgba(255,255,255,0.1)', overflow: 'hidden',
-          }}>
-            {profile.photoUrl
-              ? <img src={profile.photoUrl} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-              : avatarLetter
-            }
-          </div>
-
-          {/* Имя и бейджи */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-              <h1 style={{ fontFamily: 'var(--font-h)', fontWeight: 800, fontSize: 20, margin: 0 }}>@{name}</h1>
-              {!!profile.isAdmin && (
-                <span className="badge badge-purple" style={{ fontSize: 10 }}>
-                  <Zap size={10} style={{ marginRight: 2 }}/> Админ
-                </span>
-              )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '2px 8px', borderRadius: 100,
-                background: lvl.bg, color: lvl.color,
-                fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-h)',
-                border: '1px solid ' + lvl.color + '44',
-              }}>
-                {lvl.emoji} {lvl.label}
-              </span>
-              {!!profile.isVerified && <span className="badge badge-green" style={{ fontSize: 10 }}>✓ Верифицирован</span>}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ color: 'var(--accent)', fontSize: 12, letterSpacing: 1 }}>
-                {'★'.repeat(stars)}{'☆'.repeat(5 - stars)}
-              </span>
-              <span style={{ color: 'var(--t3)', fontSize: 12 }}>{rating.toFixed(1)} · {reviewCount} отз.</span>
-            </div>
-            {profile.bio && (
-              <p style={{ color: 'var(--t2)', fontSize: 12, lineHeight: 1.5, marginTop: 8 }}>{String(profile.bio)}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Статистика */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 16 }}>
-          {[
-            ['🛒', 'Продаж', totalSales],
-            ['📦', 'Покупок', totalPurch],
-            ['📅', 'С ' + joinDate.toLocaleDateString('ru', { month:'short', year:'2-digit' }), ''],
-          ].map(([icon, label, val]) => (
-            <div key={label} style={{
-              background: 'rgba(255,255,255,0.05)', borderRadius: 12,
-              padding: '10px 8px', textAlign: 'center',
-              border: '1px solid rgba(255,255,255,0.07)',
-            }}>
-              <div style={{ fontSize: 16, marginBottom: 2 }}>{icon}</div>
-              {val !== '' && <div style={{ fontFamily: 'var(--font-h)', fontWeight: 800, fontSize: 18, lineHeight: 1 }}>{val}</div>}
-              <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 2, lineHeight: 1.2 }}>{label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Кнопки действий */}
-        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          {isMe
-            ? <Link to="/wallet" className="btn btn-primary" style={{ flex: 1, padding: '11px 16px', fontSize: 13 }}>
-                <Wallet size={14} style={{ marginRight: 4 }}/> Кошелёк
-              </Link>
-            : <Link to={`/messages/${profile._id || profile.id}`} className="btn btn-secondary" style={{ flex: 1, padding: '11px 16px', fontSize: 13 }}>
-                💬 Написать
-              </Link>
-          }
-        </div>
-      </div>
-
-      {/* Табы */}
-      <div style={{
-        display: 'flex', gap: 0, padding: '0',
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--bg2)',
-        overflowX: 'auto', scrollbarWidth: 'none',
-      }}>
-        {[
-          ['products', `Товары (${products.length})`],
-          ['reviews',  `Отзывы (${reviews.length})`],
-          ...(isMe ? [['favorites', `Избранное (${favorites.length})`]] : [])
-        ].map(([v, l]) => (
-          <button key={v} onClick={() => setTab(v)} style={{
-            flex: 1, minWidth: 'max-content',
-            padding: '13px 16px', border: 'none', cursor: 'pointer',
-            fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-h)',
-            background: 'transparent',
-            color: tab === v ? 'var(--accent)' : 'var(--t3)',
-            borderBottom: tab === v ? '2px solid var(--accent)' : '2px solid transparent',
-            transition: 'all 0.15s',
-          }}>{l}</button>
+    <div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block", marginBottom: 6 }}>
+        <defs>
+          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={T.yellow} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={T.yellow} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon fill="url(#chartGrad)" points={area} />
+        <polyline
+          fill="none" stroke={T.yellow} strokeWidth="2"
+          strokeLinecap="round" strokeLinejoin="round"
+          points={pts}
+        />
+        {grouped.map((v, i) => (
+          <circle
+            key={i}
+            cx={(i / (grouped.length - 1)) * W}
+            cy={H - (v / maxV) * H}
+            r="3"
+            fill={T.yellow}
+            opacity={v > 0 ? 1 : 0}
+          />
+        ))}
+      </svg>
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        {days.map((d, i) => (
+          <span key={i} style={{ fontSize: 10, color: T.muted }}>
+            {dayLabels[new Date(d).getDay() === 0 ? 6 : new Date(d).getDay() - 1]}
+          </span>
         ))}
       </div>
+    </div>
+  );
+}
 
-      {/* Контент табов */}
-      <div style={{ padding: '12px 16px' }}>
-        {tab === 'products' && (
-          products.length === 0
-            ? <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--t3)' }}>
-                <Package size={36} strokeWidth={0.75} style={{ marginBottom:10, opacity:0.3 }}/>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:16, marginBottom:12 }}>Товаров нет</div>
-                {isMe && <Link to="/sell" className="btn btn-primary" style={{ fontSize:13 }}>+ Выставить товар</Link>}
+// ─── Listing card ─────────────────────────────────────────────────────────────
+function ListingCard({ product, onDelete, navigate }) {
+  const [delLoading, setDelLoading] = useState(false);
+  const statusColor = {
+    active: T.green, paused: T.yellow, sold: T.muted, deleted: T.red,
+  }[product.status] || T.muted;
+
+  const handleDelete = async () => {
+    if (!window.confirm("Удалить лот?")) return;
+    setDelLoading(true);
+    try {
+      await axios.delete(`${API}/products/${product._id}`, { headers: authHeaders() });
+      onDelete(product._id);
+      toast.success("Лот удалён");
+    } catch (e) {
+      toast.error(e.response?.data?.error || "Ошибка");
+    } finally {
+      setDelLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      background: T.surface, border: `1px solid ${T.border}`,
+      borderRadius: 16, padding: "13px 14px", marginBottom: 10,
+      display: "flex", gap: 12, alignItems: "center",
+    }}>
+      {/* Thumb */}
+      <div style={{
+        width: 50, height: 50, borderRadius: 12, flexShrink: 0,
+        background: T.s2, overflow: "hidden",
+        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
+      }}>
+        {product.images?.[0]
+          ? <img src={product.images[0]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          : "🎮"
+        }
+      </div>
+
+      {/* Info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 13, fontWeight: 700, color: T.text,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          marginBottom: 4,
+        }}>{product.title}</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: T.yellow }}>
+            ${parseFloat(product.price).toFixed(2)}
+          </span>
+          <span style={{
+            fontSize: 10, fontWeight: 600, color: statusColor,
+            background: `${statusColor}15`, padding: "2px 8px", borderRadius: 20,
+          }}>● {product.status}</span>
+        </div>
+        <div style={{ fontSize: 11, color: T.muted, marginTop: 3 }}>
+          👁 {product.views || 0} · ❤️ {product.favorites || 0}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          onClick={() => navigate(`/products/${product._id}`)}
+          style={{
+            width: 34, height: 34, borderRadius: 10,
+            background: T.s2, border: `1px solid ${T.border}`,
+            cursor: "pointer", fontSize: 14,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >👁</button>
+        <button
+          onClick={handleDelete}
+          disabled={delLoading}
+          style={{
+            width: 34, height: 34, borderRadius: 10,
+            background: "rgba(255,77,77,0.08)", border: "1px solid rgba(255,77,77,0.2)",
+            cursor: "pointer", fontSize: 14,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >{delLoading ? "⏳" : "🗑"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit profile modal ───────────────────────────────────────────────────────
+function EditModal({ user, onClose, onSave }) {
+  const [firstName, setFirstName] = useState(user?.firstName || "");
+  const [lastName,  setLastName]  = useState(user?.lastName  || "");
+  const [bio,       setBio]       = useState(user?.bio       || "");
+  const [loading,   setLoading]   = useState(false);
+
+  // PUT /api/users/me
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      const { data } = await axios.put(
+        `${API}/users/me`,
+        { firstName, lastName, bio },
+        { headers: authHeaders() }
+      );
+      onSave(data.user);
+      toast.success("Профиль обновлён ✓");
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.error || "Ошибка");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 500, display: "flex", alignItems: "flex-end" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }} />
+      <div style={{
+        position: "relative", width: "100%", maxWidth: 480, margin: "0 auto",
+        background: T.surface, borderRadius: "24px 24px 0 0",
+        border: `1px solid ${T.border}`, padding: "6px 20px 40px",
+        animation: "slideUp 0.3s cubic-bezier(0.22,1,0.36,1)",
+      }}>
+        <div style={{ width: 40, height: 4, borderRadius: 4, background: T.border, margin: "12px auto 22px" }} />
+        <div style={{ fontSize: 18, fontWeight: 800, color: T.text, marginBottom: 20 }}>Редактировать профиль</div>
+
+        {[
+          { label: "Имя", value: firstName, set: setFirstName, placeholder: "Ваше имя" },
+          { label: "Фамилия", value: lastName, set: setLastName, placeholder: "Фамилия" },
+        ].map(({ label, value, set, placeholder }) => (
+          <div key={label} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: T.dim, marginBottom: 6 }}>{label}</div>
+            <input
+              value={value}
+              onChange={e => set(e.target.value)}
+              placeholder={placeholder}
+              style={{
+                width: "100%", background: T.s2, border: `1px solid ${T.border}`,
+                borderRadius: 13, padding: "12px 14px",
+                fontSize: 14, color: T.text, outline: "none",
+                fontFamily: "'Onest', system-ui, sans-serif",
+              }}
+            />
+          </div>
+        ))}
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: T.dim, marginBottom: 6 }}>О себе</div>
+          <textarea
+            value={bio}
+            onChange={e => setBio(e.target.value.slice(0, 300))}
+            placeholder="Расскажите о себе..."
+            rows={3}
+            style={{
+              width: "100%", background: T.s2, border: `1px solid ${T.border}`,
+              borderRadius: 13, padding: "12px 14px",
+              fontSize: 14, color: T.text, outline: "none", resize: "none",
+              fontFamily: "'Onest', system-ui, sans-serif",
+            }}
+          />
+          <div style={{ fontSize: 11, color: T.muted, textAlign: "right" }}>{bio.length}/300</div>
+        </div>
+
+        <button onClick={handleSave} disabled={loading} style={{
+          width: "100%", padding: "14px",
+          background: loading ? `${T.yellow}40` : T.yellow,
+          border: "none", borderRadius: 13,
+          fontSize: 15, fontWeight: 800, color: "#000",
+          cursor: loading ? "not-allowed" : "pointer",
+          fontFamily: "'Onest', system-ui, sans-serif",
+          boxShadow: loading ? "none" : `0 4px 20px ${T.yellow}45`,
+        }}>
+          {loading ? "⏳ Сохранение..." : "Сохранить ✓"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main ProfilePage ─────────────────────────────────────────────────────────
+export default function ProfilePage() {
+  const { userId }   = useParams();
+  const navigate     = useNavigate();
+  const { user: me, login } = useStore();
+
+  const isOwn = !userId || userId === me?._id;
+  const targetId = isOwn ? me?._id : userId;
+
+  const [profile,   setProfile]   = useState(null);
+  const [reviews,   setReviews]   = useState([]);
+  const [products,  setProducts]  = useState([]);
+  const [listings,  setListings]  = useState([]);
+  const [txs,       setTxs]       = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [tab,       setTab]       = useState("listings"); // listings | reviews | stats
+  const [showEdit,  setShowEdit]  = useState(false);
+
+  // GET /api/users/:id
+  useEffect(() => {
+    if (!targetId) return;
+    setLoading(true);
+    axios.get(`${API}/users/${targetId}`)
+      .then(({ data }) => {
+        setProfile(data.user);
+        setReviews(data.reviews || []);
+        setProducts(data.products || []);
+      })
+      .catch(() => toast.error("Ошибка загрузки профиля"))
+      .finally(() => setLoading(false));
+
+    if (isOwn) {
+      // GET /api/products/my/listings
+      axios.get(`${API}/products/my/listings`, { headers: authHeaders() })
+        .then(({ data }) => setListings(data.products || []))
+        .catch(() => {});
+
+      // GET /api/wallet/transactions (for chart)
+      axios.get(`${API}/wallet/transactions`, { headers: authHeaders() })
+        .then(({ data }) => setTxs(data.transactions || []))
+        .catch(() => {});
+    }
+  }, [targetId, isOwn]);
+
+  const p = profile || me;
+  const av = (p?.username || p?.firstName || "?")[0].toUpperCase();
+  const salesTotal = txs
+    .filter(t => t.type === "sale" && t.status === "completed")
+    .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+  if (loading) return (
+    <div style={{ display: "flex", justifyContent: "center", paddingTop: 80 }}>
+      <div style={{ fontSize: 28, opacity: 0.4 }}>👤</div>
+    </div>
+  );
+
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800;900&display=swap');
+        @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+        @keyframes fadeUp  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+      `}</style>
+
+      <div style={{ fontFamily: "'Onest', system-ui, sans-serif", paddingBottom: 110, animation: "fadeUp 0.3s ease" }}>
+
+        {/* ── Hero banner ── */}
+        <div style={{
+          background: `linear-gradient(180deg, #1a1020 0%, ${T.bg} 100%)`,
+          padding: "28px 18px 20px",
+          position: "relative", overflow: "hidden",
+        }}>
+          {/* BG glow */}
+          <div style={{
+            position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)",
+            width: 200, height: 200, borderRadius: "50%",
+            background: T.purple, opacity: 0.08, filter: "blur(50px)", pointerEvents: "none",
+          }} />
+
+          {/* Avatar */}
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginBottom: 14 }}>
+            <div style={{ position: "relative" }}>
+              <div style={{
+                width: 76, height: 76, borderRadius: "50%",
+                background: `linear-gradient(135deg, ${T.yellow}, #FF8C00)`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 30, fontWeight: 900, color: "#000",
+                border: `3px solid ${T.bg}`,
+                boxShadow: `0 0 0 2px ${T.yellow}40`,
+              }}>{av}</div>
+              {p?.isVerified && (
+                <div style={{
+                  position: "absolute", bottom: 2, right: 2,
+                  width: 22, height: 22, borderRadius: "50%",
+                  background: "#29B6F6", border: `2px solid ${T.bg}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, color: "#fff", fontWeight: 700,
+                }}>✓</div>
+              )}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 20, fontWeight: 900, color: T.text, letterSpacing: "-0.4px" }}>
+                @{p?.username}
               </div>
-            : <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                {products.map(p => <ProductCard key={p.id||p._id} product={p}/>)}
+              {(p?.firstName || p?.lastName) && (
+                <div style={{ fontSize: 14, color: T.dim, marginTop: 2 }}>
+                  {[p.firstName, p.lastName].filter(Boolean).join(" ")}
+                </div>
+              )}
+            </div>
+            {isOwn && (
+              <button onClick={() => setShowEdit(true)} style={{
+                background: T.s2, border: `1px solid ${T.border}`,
+                borderRadius: 11, padding: "8px 14px",
+                fontSize: 13, color: T.dim, cursor: "pointer",
+                fontFamily: "'Onest', system-ui, sans-serif",
+              }}>✏️ Изменить</button>
+            )}
+          </div>
+
+          {/* Bio */}
+          {p?.bio && (
+            <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6, marginBottom: 14 }}>
+              {p.bio}
+            </div>
+          )}
+
+          {/* Stats strip */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 8,
+          }}>
+            {[
+              { label: "Продаж", value: p?.totalSales || 0 },
+              { label: "Рейтинг", value: `${(p?.rating || 5).toFixed(1)}★` },
+              { label: "Отзывов", value: p?.reviewCount || 0 },
+              { label: "На сайте", value: p?.createdAt
+                ? `${Math.floor((Date.now() / 1000 - p.createdAt) / 86400)}д`
+                : "—" },
+            ].map(({ label, value }) => (
+              <div key={label} style={{
+                background: `${T.surface}90`, border: `1px solid ${T.border}`,
+                borderRadius: 12, padding: "10px 8px", textAlign: "center",
+              }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{value}</div>
+                <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>{label}</div>
               </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Action buttons (non-own) ── */}
+        {!isOwn && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 16px 4px" }}>
+            <button onClick={() => navigate(`/messages/${userId}`)} style={{
+              padding: "12px", borderRadius: 13,
+              background: T.yellow, border: "none",
+              fontSize: 14, fontWeight: 700, color: "#000",
+              cursor: "pointer", fontFamily: "'Onest', system-ui, sans-serif",
+            }}>💬 Написать</button>
+            <button onClick={() => navigate(`/catalog?seller=${userId}`)} style={{
+              padding: "12px", borderRadius: 13,
+              background: T.s2, border: `1px solid ${T.border}`,
+              fontSize: 14, fontWeight: 700, color: T.dim,
+              cursor: "pointer", fontFamily: "'Onest', system-ui, sans-serif",
+            }}>🛍 Лоты</button>
+          </div>
         )}
 
-        {tab === 'reviews' && (
-          reviews.length === 0
-            ? <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--t3)' }}>
-                <Star size={36} strokeWidth={0.75} style={{ marginBottom:10, opacity:0.3 }}/>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:16 }}>Отзывов пока нет</div>
-              </div>
-            : <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {reviews.map(r => (
-                  <div key={r.id||r._id} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:14 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
-                      <div style={{
-                        width:32, height:32, borderRadius:10, flexShrink:0,
-                        background:'linear-gradient(135deg,var(--purple),var(--accent))',
-                        display:'flex', alignItems:'center', justifyContent:'center',
-                        fontSize:13, fontWeight:700,
-                      }}>
-                        {(r.reviewer_username||'?')[0].toUpperCase()}
-                      </div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:600, fontSize:13 }}>@{r.reviewer_username}</div>
-                        <div style={{ fontSize:10, color:'var(--t4)' }}>
-                          {r.product_title ? `${r.product_title} · ` : ''}
-                          {new Date((r.created_at||0)*1000).toLocaleDateString('ru')}
-                        </div>
-                      </div>
-                      <span style={{ color:'var(--accent)', fontSize:12 }}>{'★'.repeat(Math.min(5,Math.max(0,parseInt(r.rating)||0)))}</span>
+        {/* ── Tabs ── */}
+        {isOwn && (
+          <div style={{ display: "flex", padding: "14px 16px 0", gap: 8 }}>
+            {[
+              { id: "listings", label: "📦 Мои лоты" },
+              { id: "stats",    label: "📊 Статистика" },
+              { id: "reviews",  label: "⭐ Отзывы" },
+            ].map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                flex: 1, padding: "9px 4px", borderRadius: 11,
+                background: tab === t.id ? T.yellow : T.s2,
+                border: `1px solid ${tab === t.id ? T.yellow : T.border}`,
+                fontSize: 12, fontWeight: 700,
+                color: tab === t.id ? "#000" : T.dim,
+                cursor: "pointer", fontFamily: "'Onest', system-ui, sans-serif",
+                transition: "all 0.2s",
+              }}>{t.label}</button>
+            ))}
+          </div>
+        )}
+
+        <div style={{ padding: "16px 16px 0" }}>
+
+          {/* ── Listings tab ── */}
+          {(tab === "listings" || !isOwn) && (
+            <>
+              {isOwn && (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>
+                      Активные лоты <span style={{ color: T.muted }}>({listings.length})</span>
                     </div>
-                    {r.text && <p style={{ color:'var(--t2)', fontSize:12, lineHeight:1.6, margin:0 }}>{r.text}</p>}
+                    <button onClick={() => navigate("/sell")} style={{
+                      background: `${T.yellow}15`, border: `1px solid ${T.yellow}30`,
+                      borderRadius: 20, padding: "5px 14px",
+                      fontSize: 12, fontWeight: 700, color: T.yellow,
+                      cursor: "pointer", fontFamily: "'Onest', system-ui, sans-serif",
+                    }}>+ Добавить</button>
+                  </div>
+                  {listings.map(l => (
+                    <ListingCard
+                      key={l._id} product={l}
+                      onDelete={id => setListings(prev => prev.filter(x => x._id !== id))}
+                      navigate={navigate}
+                    />
+                  ))}
+                  {listings.length === 0 && (
+                    <div style={{ textAlign: "center", paddingTop: 30, color: T.muted }}>
+                      <div style={{ fontSize: 36 }}>📦</div>
+                      <div style={{ marginTop: 10, fontSize: 14 }}>Нет активных лотов</div>
+                      <button onClick={() => navigate("/sell")} style={{
+                        marginTop: 14, padding: "10px 20px", borderRadius: 12,
+                        background: T.yellow, border: "none",
+                        fontSize: 14, fontWeight: 700, color: "#000",
+                        cursor: "pointer", fontFamily: "'Onest', system-ui, sans-serif",
+                      }}>Создать первый лот →</button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!isOwn && products.map(p => (
+                <div
+                  key={p._id}
+                  onClick={() => navigate(`/products/${p._id}`)}
+                  style={{
+                    background: T.surface, border: `1px solid ${T.border}`,
+                    borderRadius: 16, padding: "13px 14px", marginBottom: 10,
+                    display: "flex", gap: 12, alignItems: "center", cursor: "pointer",
+                  }}
+                >
+                  <div style={{
+                    width: 50, height: 50, borderRadius: 12, background: T.s2,
+                    overflow: "hidden", flexShrink: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
+                  }}>
+                    {p.images?.[0]
+                      ? <img src={p.images[0]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : "🎮"
+                    }
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.text,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.title}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 3 }}>
+                      {p.category} · 👁 {p.views}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: T.yellow }}>
+                    ${p.price.toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* ── Stats tab ── */}
+          {isOwn && tab === "stats" && (
+            <div>
+              {/* Income card */}
+              <div style={{
+                background: `linear-gradient(135deg, #1a1a00, #242400)`,
+                border: `1px solid ${T.yellow}25`,
+                borderRadius: 18, padding: "18px 18px 14px", marginBottom: 14,
+              }}>
+                <div style={{ fontSize: 12, color: `${T.yellow}80`, fontWeight: 600, marginBottom: 8, letterSpacing: "0.06em" }}>
+                  💰 ДОХОД ЗА 7 ДНЕЙ
+                </div>
+                <div style={{ fontSize: 32, fontWeight: 900, color: T.yellow, letterSpacing: "-0.5px", marginBottom: 16 }}>
+                  +${salesTotal.toFixed(2)}
+                </div>
+                <IncomeChart txs={txs} />
+              </div>
+
+              {/* Detailed stats */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                {[
+                  { label: "Активных лотов", value: listings.filter(l => l.status === "active").length, icon: "📦" },
+                  { label: "Всего продаж",   value: p?.totalSales || 0,       icon: "🤝" },
+                  { label: "Средний чек",    value: p?.totalSales > 0 ? `$${(salesTotal / p.totalSales).toFixed(2)}` : "$0", icon: "💳" },
+                  { label: "Рейтинг",        value: `${(p?.rating || 5).toFixed(1)} ★`, icon: "⭐" },
+                ].map(({ label, value, icon }) => (
+                  <div key={label} style={{
+                    background: T.surface, border: `1px solid ${T.border}`,
+                    borderRadius: 16, padding: "14px",
+                  }}>
+                    <div style={{ fontSize: 20, marginBottom: 6 }}>{icon}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>{value}</div>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 3 }}>{label}</div>
                   </div>
                 ))}
               </div>
-        )}
 
-        {tab === 'favorites' && (
-          favorites.length === 0
-            ? <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--t3)' }}>
-                <Heart size={36} strokeWidth={0.75} style={{ marginBottom:10, opacity:0.3 }}/>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:16, marginBottom:6 }}>Избранное пусто</div>
-                <div style={{ fontSize:12, marginBottom:16, color:'var(--t3)' }}>Добавляйте товары нажав ❤️ на странице товара</div>
-                <Link to="/catalog" className="btn btn-primary" style={{ fontSize:13 }}>Перейти в каталог</Link>
+              {/* Quick actions */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <button onClick={() => navigate("/deals")} style={{
+                  padding: "13px", borderRadius: 13,
+                  background: T.s2, border: `1px solid ${T.border}`,
+                  fontSize: 13, fontWeight: 700, color: T.dim,
+                  cursor: "pointer", fontFamily: "'Onest', system-ui, sans-serif",
+                }}>🤝 Мои сделки</button>
+                <button onClick={() => navigate("/wallet")} style={{
+                  padding: "13px", borderRadius: 13,
+                  background: `${T.yellow}12`, border: `1px solid ${T.yellow}25`,
+                  fontSize: 13, fontWeight: 700, color: T.yellow,
+                  cursor: "pointer", fontFamily: "'Onest', system-ui, sans-serif",
+                }}>💳 Кошелёк</button>
               </div>
-            : <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                {favorites.map(p => <ProductCard key={p.id||p._id} product={p}/>)}
-              </div>
-        )}
-      </div>
-    </div>
-  )
-}
+            </div>
+          )}
 
-export default function ProfilePage() {
-  const { id } = useParams()
-  const { user: me, hydrated } = useStore()
-  const navigate = useNavigate()
-  const [profile, setProfile]   = useState(null)
-  const [products, setProducts] = useState([])
-  const [reviews, setReviews]   = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState(null)
-  const [tab, setTab]           = useState('products')
-  const [favorites, setFavorites] = useState([])
-  const tg = useMemo(() => isTG(), [])
+          {/* ── Reviews tab ── */}
+          {(tab === "reviews" || !isOwn) && tab !== "listings" && tab !== "stats" && (
+            <div>
+              {!isOwn && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                  <Stars rating={p?.rating} />
+                  <span style={{ fontSize: 15, fontWeight: 700, color: T.text }}>
+                    {(p?.rating || 5).toFixed(1)}
+                  </span>
+                  <span style={{ fontSize: 13, color: T.muted }}>({reviews.length} отзывов)</span>
+                </div>
+              )}
 
-  useMeta(profile ? {
-    title: `@${profile.username} — профиль продавца`,
-    description: `Профиль @${profile.username} на Minions Market. Рейтинг ${profile.rating}, ${profile.total_sales || 0} продаж.`,
-  } : { title: 'Профиль' })
+              {reviews.length === 0 && (
+                <div style={{ textAlign: "center", paddingTop: 30, color: T.muted }}>
+                  <div style={{ fontSize: 36 }}>⭐</div>
+                  <div style={{ marginTop: 10, fontSize: 14 }}>Отзывов пока нет</div>
+                </div>
+              )}
 
-  useEffect(() => {
-    if (!hydrated) return
-    const targetId = id || me?._id || me?.id
-    if (!targetId) { navigate('/auth'); return }
-    const isMyProfile = !id || id === (me?._id || me?.id)
-    setLoading(true)
-    setError(null)
-    const requests = [api.get(`/users/${targetId}`)]
-    if (isMyProfile) requests.push(api.get('/users/me/favorites').catch(() => ({ data: { products: [] } })))
-    Promise.all(requests)
-      .then(([r, favR]) => {
-        setProfile(r.data.user)
-        setProducts(r.data.products || [])
-        setReviews(r.data.reviews || [])
-        if (favR) setFavorites(favR.data.products || [])
-      })
-      .catch(() => { setError('Пользователь не найден'); toast.error('Пользователь не найден') })
-      .finally(() => setLoading(false))
-  }, [id, me, hydrated])
-
-  if (!hydrated || loading) return (
-    <div style={{ maxWidth:900, margin:'0 auto', padding:'24px 12px' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:24 }}>
-        <div className="skel" style={{ width:72, height:72, borderRadius:20, flexShrink:0 }}/>
-        <div style={{ flex:1, display:'flex', flexDirection:'column', gap:10 }}>
-          <div className="skel" style={{ height:20, width:160 }}/>
-          <div className="skel" style={{ height:14, width:120 }}/>
-        </div>
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns: tg ? '1fr 1fr' : 'repeat(3,1fr)', gap:12 }}>
-        {[0,1,2].map(i => <div key={i} className="skel" style={{ height:180 }}/>)}
-      </div>
-    </div>
-  )
-
-  if (error || !profile) return (
-    <div style={{ textAlign:'center', padding:'80px 20px' }}>
-      <UserCircle size={48} strokeWidth={1} style={{marginBottom:16, opacity:0.35}}/>
-      <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:24, marginBottom:16 }}>
-        {error || 'Пользователь не найден'}
-      </div>
-      <Link to="/" className="btn btn-secondary">На главную</Link>
-    </div>
-  )
-
-  const isMe        = !id || id === me?._id || id === me?.id
-  const joinDate    = profile.created_at ? new Date(Number(profile.created_at) * 1000) : new Date()
-  const name        = profile.username || profile.firstName || 'Пользователь'
-  const rating      = Math.min(5, Math.max(0, parseFloat(profile.rating) || 5))
-  const stars       = Math.round(rating)
-  const reviewCount = parseInt(profile.reviewCount)    || parseInt(profile.review_count)    || 0
-  const totalSales  = parseInt(profile.totalSales)     || parseInt(profile.total_sales)     || 0
-  const totalPurch  = parseInt(profile.totalPurchases) || parseInt(profile.total_purchases) || 0
-  const glowColor   = rating >= 4.5 ? 'rgba(245,200,66,0.55)' : 'rgba(124,106,255,0.55)'
-
-  const iconPattern = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Ccircle cx='20' cy='20' r='8' fill='white' opacity='0.6'/%3E%3Ccircle cx='60' cy='20' r='5' fill='white' opacity='0.4'/%3E%3Ccircle cx='40' cy='50' r='10' fill='white' opacity='0.7'/%3E%3Ccircle cx='10' cy='60' r='4' fill='white' opacity='0.3'/%3E%3Ccircle cx='70' cy='65' r='7' fill='white' opacity='0.5'/%3E%3Crect x='30' y='5' width='6' height='6' fill='white' opacity='0.5' transform='rotate(45 33 8)'/%3E%3Crect x='55' y='40' width='5' height='5' fill='white' opacity='0.4' transform='rotate(45 57 42)'/%3E%3C/svg%3E`
-  const grainPattern = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E`
-
-  const CardFallback = (
-    <div style={{
-      width:300, background:'linear-gradient(145deg,#1a1a2e,#0f3460)',
-      border:'1px solid var(--border)', borderRadius:24, padding:32, textAlign:'center'
-    }}>
-      <div style={{
-        width:80, height:80, borderRadius:20, margin:'0 auto 16px',
-        background:'linear-gradient(135deg,var(--purple),var(--accent))',
-        display:'flex', alignItems:'center', justifyContent:'center',
-        fontSize:32, fontWeight:800, fontFamily:'var(--font-h)', color:'#0d0d14'
-      }}>
-        {name[0].toUpperCase()}
-      </div>
-      <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20, marginBottom:4 }}>@{name}</div>
-      <div style={{ color:'var(--t3)', fontSize:13 }}>★ {rating.toFixed(1)} · {reviewCount} отзывов</div>
-    </div>
-  )
-
-  // ── TG Mini App ──────────────────────────────────────────────────────────────
-  if (tg) {
-    return (
-      <TGProfile
-        profile={profile} products={products} reviews={reviews}
-        favorites={favorites} tab={tab} setTab={setTab}
-        isMe={isMe} navigate={navigate} me={me}
-      />
-    )
-  }
-
-  // ── Web / Desktop ────────────────────────────────────────────────────────────
-  return (
-    <div style={{ position:'relative', minHeight:'var(--app-height)', overflow:'hidden' }}>
-      {/* Aurora фон */}
-      <div style={{ position:'fixed', inset:0, zIndex:0, pointerEvents:'none' }}>
-        <Aurora
-          colorStops={["#7cff67", "#B19EEF", "#5227FF"]}
-          blend={0.5} amplitude={1.0} speed={1}
-        />
-      </div>
-
-      <div style={{ position:'relative', zIndex:1, maxWidth:1100, margin:'0 auto', padding:'24px 12px' }}>
-      <div className="profile-grid">
-
-        {/* Левая колонка — ProfileCard */}
-        <div style={{ display:'flex', flexDirection:'column', gap:16, alignItems:'center' }}>
-          <CardBoundary fallback={CardFallback}>
-            <ProfileCard
-              name={name}
-              title={profile.isVerified
-                ? '✓ Верифицирован'
-                : `На сайте с ${joinDate.toLocaleDateString('ru', { month:'long', year:'numeric' })}`}
-              handle={profile.username || profile.firstName || ''}
-              status={`★ ${rating.toFixed(1)} · ${reviewCount} отзывов`}
-              contactText={isMe ? 'Кошелёк' : 'Профиль'}
-              avatarUrl={profile.photoUrl || ''}
-              iconUrl={iconPattern}
-              grainUrl={grainPattern}
-              showUserInfo={true}
-              enableTilt={true}
-              enableMobileTilt={false}
-              behindGlowEnabled={true}
-              behindGlowColor={glowColor}
-              innerGradient="linear-gradient(145deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)"
-              onContactClick={() => isMe ? navigate('/wallet') : null}
-            />
-          </CardBoundary>
-
-          {/* Статистика */}
-          <div style={{ width:'100%', background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:'16px 20px' }}>
-            <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:11, color:'var(--t3)', letterSpacing:'0.12em', marginBottom:12 }}>СТАТИСТИКА</div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
-              {[[<Package size={18} strokeWidth={1.5}/>, 'Продаж', totalSales],[<ShoppingCart size={18} strokeWidth={1.5}/>, 'Покупок', totalPurch]].map(([icon,label,val]) => (
-                <div key={label} style={{ background:'var(--bg3)', borderRadius:12, padding:'12px', textAlign:'center' }}>
-                  <div style={{ fontSize:18 }}>{icon}</div>
-                  <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20 }}>{val}</div>
-                  <div style={{ fontSize:11, color:'var(--t3)' }}>{label}</div>
+              {reviews.map((r, i) => (
+                <div key={r._id || i} style={{
+                  background: T.surface, border: `1px solid ${T.border}`,
+                  borderRadius: 16, padding: "14px 16px", marginBottom: 10,
+                  animation: `fadeUp 0.3s ${i * 0.04}s ease both`,
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: "50%",
+                        background: `linear-gradient(135deg, ${T.purple}, #A78BFA)`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 12, fontWeight: 800, color: "#fff",
+                      }}>
+                        {(r.reviewer_username || "?")[0].toUpperCase()}
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>
+                        @{r.reviewer_username}
+                      </span>
+                    </div>
+                    <Stars rating={r.rating} />
+                  </div>
+                  {r.comment && (
+                    <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6 }}>{r.comment}</div>
+                  )}
+                  {r.product_title && (
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 8 }}>
+                      📦 {r.product_title}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
-            <div style={{ fontSize:12, display:'flex', justifyContent:'space-between', paddingTop:10, borderTop:'1px solid var(--border)' }}>
-              <span style={{ color:'var(--t3)', display:'flex', alignItems:'center', gap:4 }}><Calendar size={13} strokeWidth={1.75}/> На сайте с</span>
-              <span style={{ fontWeight:600 }}>{joinDate.toLocaleDateString('ru', { month:'long', year:'numeric' })}</span>
-            </div>
-          </div>
-
-          {isMe && <Link to="/wallet" className="btn btn-primary btn-full"><Wallet size={15} style={{marginRight:6}}/> Кошелёк</Link>}
-          {!isMe && <Link to={`/messages/${id}`} className="btn btn-secondary btn-full" style={{marginTop:8}}>💬 Написать сообщение</Link>}
-        </div>
-
-        {/* Правая колонка */}
-        <div>
-          <div style={{ marginBottom:24 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom:8 }}>
-              <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:26, margin:0 }}>@{name}</h1>
-              {!!profile.isVerified && <span className="badge badge-green">✓ Верифицирован</span>}
-              {(() => {
-                const lvlKey = profile.seller_level || calcLevel(profile.total_sales)
-                const lvl = LEVELS[lvlKey] || LEVELS.newcomer
-                return (
-                  <span style={{
-                    display:'inline-flex', alignItems:'center', gap:4,
-                    padding:'3px 10px', borderRadius:100,
-                    background: lvl.bg, color: lvl.color,
-                    fontSize:11, fontWeight:700, fontFamily:'var(--font-h)',
-                    border: '1px solid ' + lvl.color + '44',
-                  }}>
-                    {lvl.emoji} {lvl.label}
-                  </span>
-                )
-              })()}
-              {!!profile.isAdmin && <span className="badge badge-purple"><Zap size={12} style={{marginRight:3}}/> Админ</span>}
-            </div>
-            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-              <span style={{ color:'var(--accent)', fontSize:14, letterSpacing:2 }}>
-                {'★'.repeat(stars)}{'☆'.repeat(5 - stars)}
-              </span>
-              <span style={{ color:'var(--t3)', fontSize:13 }}>{rating.toFixed(1)} · {reviewCount} отзывов</span>
-            </div>
-            {profile.bio && (
-              <p style={{ color:'var(--t2)', fontSize:13, lineHeight:1.6, margin:0, background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:12, padding:'10px 14px' }}>
-                {String(profile.bio)}
-              </p>
-            )}
-          </div>
-
-          {/* Табы */}
-          <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
-            {[
-              ['products', `Товары (${products.length})`],
-              ['reviews',  `Отзывы (${reviews.length})`],
-              ...(!id || id === (me?._id || me?.id) ? [['favorites', `Избранное (${favorites.length})`]] : [])
-            ].map(([v,l]) => (
-              <button key={v} onClick={() => setTab(v)} style={{
-                padding:'10px 20px', borderRadius:10, border:'1px solid', cursor:'pointer',
-                fontSize:13, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
-                background: tab===v ? (v==='favorites' ? 'rgba(231,76,60,0.1)' : 'rgba(245,200,66,0.1)') : 'transparent',
-                borderColor: tab===v ? (v==='favorites' ? 'rgba(231,76,60,0.4)' : 'rgba(245,200,66,0.4)') : 'var(--border)',
-                color: tab===v ? (v==='favorites' ? '#e74c3c' : 'var(--accent)') : 'var(--t3)',
-              }}>{l}</button>
-            ))}
-          </div>
-
-          {tab === 'products' && (
-            products.length === 0
-              ? <div style={{ textAlign:'center', padding:'60px 20px', color:'var(--t3)' }}>
-                  <Package size={40} strokeWidth={0.75} style={{marginBottom:12, opacity:0.3}}/>
-                  <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:18, marginBottom:16 }}>Товаров нет</div>
-                  {isMe && <Link to="/sell" className="btn btn-primary">+ Выставить товар</Link>}
-                </div>
-              : <div className="profile-products-grid">
-                  {products.map(p => <ProductCard key={p.id||p._id} product={p}/>)}
-                </div>
           )}
 
-          {tab === 'reviews' && (
-            reviews.length === 0
-              ? <div style={{ textAlign:'center', padding:'60px 20px', color:'var(--t3)' }}>
-                  <Star size={40} strokeWidth={0.75} style={{marginBottom:12, opacity:0.3}}/>
-                  <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:18 }}>Отзывов пока нет</div>
-                </div>
-              : <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                  {reviews.map(r => (
-                    <div key={r.id||r._id} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:20 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:8 }}>
-                        <div style={{ width:36, height:36, borderRadius:10, flexShrink:0, background:'linear-gradient(135deg,var(--purple),var(--accent))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700 }}>
-                          {(r.reviewer_username||'?')[0].toUpperCase()}
-                        </div>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontWeight:600, fontSize:14 }}>@{r.reviewer_username}</div>
-                          <div style={{ fontSize:11, color:'var(--t4)' }}>
-                            {r.product_title ? `${r.product_title} · ` : ''}
-                            {new Date((r.created_at||0)*1000).toLocaleDateString('ru')}
-                          </div>
-                        </div>
-                        <span style={{ color:'var(--accent)', fontSize:14 }}>{'★'.repeat(Math.min(5,Math.max(0,parseInt(r.rating)||0)))}</span>
-                      </div>
-                      {r.text && <p style={{ color:'var(--t2)', fontSize:13, lineHeight:1.7, margin:0 }}>{r.text}</p>}
-                    </div>
-                  ))}
-                </div>
-          )}
-
-          {tab === 'favorites' && (
-            favorites.length === 0
-              ? <div style={{ textAlign:'center', padding:'60px 20px', color:'var(--t3)' }}>
-                  <Heart size={40} strokeWidth={0.75} style={{marginBottom:12, opacity:0.3}}/>
-                  <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:18, marginBottom:8 }}>Избранное пусто</div>
-                  <div style={{ fontSize:13, marginBottom:20 }}>Добавляйте товары в избранное нажав ❤️ на странице товара</div>
-                  <Link to="/catalog" className="btn btn-primary">Перейти в каталог</Link>
-                </div>
-              : <div>
-                  <div style={{ fontSize:13, color:'var(--t3)', marginBottom:16 }}>
-                    {favorites.length} {favorites.length === 1 ? 'товар' : favorites.length < 5 ? 'товара' : 'товаров'} в избранном
-                  </div>
-                  <div className="profile-products-grid">
-                    {favorites.map(p => <ProductCard key={p.id||p._id} product={p}/>)}
-                  </div>
-                </div>
+          {/* ── Own profile bottom actions ── */}
+          {isOwn && tab === "listings" && (
+            <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${T.border}` }}>
+              <button onClick={() => {
+                useStore.getState().logout();
+                navigate("/");
+              }} style={{
+                width: "100%", padding: "13px",
+                background: "rgba(255,77,77,0.07)", border: "1px solid rgba(255,77,77,0.15)",
+                borderRadius: 13, fontSize: 14, fontWeight: 700, color: T.red,
+                cursor: "pointer", fontFamily: "'Onest', system-ui, sans-serif",
+              }}>
+                → Выйти из аккаунта
+              </button>
+            </div>
           )}
         </div>
       </div>
 
-      <style>{`
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 320px 1fr;
-          gap: 32px;
-          align-items: start;
-        }
-        @media (max-width: 860px) {
-          .profile-grid { grid-template-columns: 1fr !important; }
-          .profile-grid > div:first-child { width: 100%; max-width: 400px; margin: 0 auto; }
-        }
-        @media (max-width: 480px) {
-          .profile-grid > div:first-child { max-width: 100%; }
-        }
-        .profile-products-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 16px;
-        }
-        @media (max-width: 860px) { .profile-products-grid { grid-template-columns: repeat(2, 1fr); } }
-        @media (max-width: 480px) { .profile-products-grid { grid-template-columns: 1fr; } }
-      `}</style>
-      </div>
-    </div>
-  )
+      {showEdit && (
+        <EditModal
+          user={me}
+          onClose={() => setShowEdit(false)}
+          onSave={(updatedUser) => {
+            login(updatedUser, useStore.getState().token);
+            setProfile(updatedUser);
+          }}
+        />
+      )}
+    </>
+  );
 }
