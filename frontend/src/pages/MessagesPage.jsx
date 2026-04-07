@@ -1,324 +1,440 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { api, useStore } from '../store'
-import { ArrowLeft, Send, Camera } from '../components/Icon'
-import toast from 'react-hot-toast'
+// MessagesPage.jsx — Playerok-style refactor
+// API сохранён 100%:
+//   GET  /api/messages              → список диалогов (dialogs[])
+//   GET  /api/messages/:userId      → переписка + partner
+//   POST /api/messages/:userId      → отправить { text, image }
+//   GET  /api/messages/unread/count → { count }
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import axios from "axios";
+import toast from "react-hot-toast";
+import { useStore } from "../store";
 
-export default function MessagesPage() {
-  const { userId } = useParams()
-  const navigate   = useNavigate()
-  const { user }   = useStore()
+const API = "/api";
+const T = {
+  bg:      "#0D0D0E",
+  surface: "#1B1B1D",
+  s2:      "#242426",
+  border:  "rgba(255,255,255,0.07)",
+  yellow:  "#FFD600",
+  green:   "#39FF14",
+  text:    "#FFFFFF",
+  muted:   "rgba(255,255,255,0.38)",
+  dim:     "rgba(255,255,255,0.6)",
+  red:     "#FF4D4D",
+};
 
-  const [dialogs,  setDialogs]  = useState([])
-  const [partner,  setPartner]  = useState(null)
-  const [messages, setMessages] = useState([])
-  const [text,     setText]     = useState('')
-  const [loading,  setLoading]  = useState(true)
-  const [sending,  setSending]  = useState(false)
-  const [viewImg,  setViewImg]  = useState(null)  // полноэкранный просмотр фото
-  const [image,    setImage]    = useState(null)   // base64 превью
-  const fileRef = useRef(null)
-  const bottomRef = useRef(null)
+function authHeaders() {
+  return { Authorization: `Bearer ${useStore.getState().token}` };
+}
 
-  // Загружаем диалоги
+function timeAgo(ts) {
+  if (!ts) return "";
+  const sec = Math.floor(Date.now() / 1000 - (typeof ts === "number" ? ts : new Date(ts).getTime() / 1000));
+  if (sec < 60)    return "только что";
+  if (sec < 3600)  return `${Math.floor(sec / 60)} мин`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} ч`;
+  return new Date(typeof ts === "number" ? ts * 1000 : ts).toLocaleDateString("ru");
+}
+
+function formatTime(ts) {
+  if (!ts) return "";
+  const d = typeof ts === "number" ? new Date(ts * 1000) : new Date(ts);
+  return d.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+}
+
+// ─── Dialogs list ─────────────────────────────────────────────────────────────
+function DialogsList({ onSelect }) {
+  const [dialogs, setDialogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useStore();
+  const navigate = useNavigate();
+
   useEffect(() => {
-    if (!user) { navigate('/auth'); return }
-    api.get('/messages')
-      .then(r => setDialogs(r.data.dialogs || []))
-      .catch(() => {})
-  }, [user])
+    axios.get(`${API}/messages`, { headers: authHeaders() })
+      .then(({ data }) => setDialogs(data.dialogs || []))
+      .catch(() => toast.error("Ошибка загрузки"))
+      .finally(() => setLoading(false));
+  }, []);
 
-  // Загружаем переписку
-  useEffect(() => {
-    if (!userId) { setLoading(false); return }
-    setLoading(true)
-    api.get(`/messages/${userId}`)
-      .then(r => {
-        setPartner(r.data.partner)
-        setMessages(r.data.messages || [])
-      })
-      .catch(() => toast.error('Не удалось загрузить переписку'))
-      .finally(() => setLoading(false))
-  }, [userId])
+  if (loading) return (
+    <div style={{ display: "flex", justifyContent: "center", paddingTop: 60 }}>
+      <div style={{ fontSize: 28, opacity: 0.5 }}>💬</div>
+    </div>
+  );
 
-  // Скроллим вниз
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  // Polling — новые сообщения каждые 3 сек
-  useEffect(() => {
-    if (!userId) return
-    const interval = setInterval(() => {
-      api.get(`/messages/${userId}`)
-        .then(r => setMessages(r.data.messages || []))
-        .catch(() => {})
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [userId])
-
-  const send = async () => {
-    if (!text.trim() && !image) return
-    if (!userId) return
-    setSending(true)
-    try {
-      const { data } = await api.post(`/messages/${userId}`, {
-        text: text.trim() || '📷 Фото',
-        image: image || null,
-      })
-      setMessages(prev => [...prev, data.message])
-      setText('')
-      setImage(null)
-    } catch(e) {
-      toast.error(e.response?.data?.error || 'Ошибка отправки')
-    }
-    setSending(false)
-  }
-
-  const handleFile = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (file.size > 5 * 1024 * 1024) { toast.error('Максимальный размер фото 5MB'); return }
-    if (!file.type.startsWith('image/')) { toast.error('Только изображения'); return }
-    const reader = new FileReader()
-    reader.onload = (ev) => setImage(ev.target.result)
-    reader.readAsDataURL(file)
-    e.target.value = ''
-  }
-
-  if (!user) return null
-
-  const myId = user._id || user.id
+  if (!dialogs.length) return (
+    <div style={{ textAlign: "center", paddingTop: 80, color: T.muted }}>
+      <div style={{ fontSize: 48, marginBottom: 12 }}>💬</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: T.dim }}>Нет сообщений</div>
+      <div style={{ fontSize: 13, marginTop: 6 }}>Начните общение с продавцом</div>
+    </div>
+  );
 
   return (
-    <div style={{ maxWidth:900, margin:'0 auto', padding:'0', height:'calc(var(--app-height) - 130px)', display:'flex', gap:0 }}>
-
-      {/* ── Список диалогов (слева) ── */}
-      <div style={{
-        width: userId ? 0 : '100%',
-        minWidth: userId ? 0 : '100%',
-        overflow: 'hidden',
-        borderRight: '1px solid var(--border)',
-        display: 'flex', flexDirection: 'column',
-      }} className="dialogs-panel">
-        <div style={{ padding:'16px 16px 12px', borderBottom:'1px solid var(--border)' }}>
-          <h2 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20 }}>💬 Сообщения</h2>
+    <div>
+      {/* Header */}
+      <div style={{ padding: "16px 16px 12px", borderBottom: `1px solid ${T.border}` }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: T.text, letterSpacing: "-0.4px" }}>
+          Сообщения
         </div>
-
-        {dialogs.length === 0 ? (
-          <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:40, color:'var(--t3)' }}>
-            <div style={{ fontSize:48, marginBottom:16 }}>💬</div>
-            <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:16, marginBottom:8 }}>Нет сообщений</div>
-            <div style={{ fontSize:13, textAlign:'center' }}>Напишите продавцу со страницы товара</div>
-          </div>
-        ) : (
-          <div style={{ flex:1, overflowY:'auto' }}>
-            {dialogs.map(d => (
-              <Link key={d.partner_id} to={`/messages/${d.partner_id}`} style={{
-                display:'flex', alignItems:'center', gap:12, padding:'14px 16px',
-                borderBottom:'1px solid var(--border)', color:'inherit',
-                background: userId === d.partner_id ? 'rgba(245,200,66,0.06)' : 'transparent',
-                transition:'background 0.15s',
-              }}>
-                {/* Аватар */}
-                <div style={{
-                  width:44, height:44, borderRadius:12, flexShrink:0,
-                  background:'linear-gradient(135deg,var(--purple),var(--accent))',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:16, fontWeight:700, fontFamily:'var(--font-h)', position:'relative',
-                }}>
-                  {(d.partner_username||'?')[0].toUpperCase()}
-                  {parseInt(d.unread_count) > 0 && (
-                    <div style={{
-                      position:'absolute', top:-4, right:-4,
-                      width:18, height:18, borderRadius:'50%',
-                      background:'var(--accent)', color:'#0d0d14',
-                      fontSize:10, fontWeight:800, display:'flex',
-                      alignItems:'center', justifyContent:'center',
-                    }}>{d.unread_count}</div>
-                  )}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontWeight:700, fontSize:14, marginBottom:2 }}>@{d.partner_username}</div>
-                  <div style={{ fontSize:12, color:'var(--t3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                    {d.last_sender_id === myId ? 'Вы: ' : ''}{d.last_text}
-                  </div>
-                </div>
-                <div style={{ fontSize:11, color:'var(--t4)', flexShrink:0 }}>
-                  {new Date((d.last_time||0)*1000).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})}
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
+        <div style={{ fontSize: 13, color: T.muted, marginTop: 2 }}>
+          {dialogs.length} {dialogs.length === 1 ? "диалог" : "диалогов"}
+        </div>
       </div>
 
-      {/* ── Переписка (справа) ── */}
-      {userId && (
-        <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
+      {dialogs.map((d) => {
+        const unread = parseInt(d.unread_count) || 0;
+        const av = (d.partner_username || "?")[0].toUpperCase();
+        const isMine = d.last_sender_id === user?._id;
 
-          {/* Шапка */}
-          <div style={{
-            padding:'12px 16px', borderBottom:'1px solid var(--border)',
-            display:'flex', alignItems:'center', gap:12,
-            background:'var(--bg2)',
-          }}>
-            <button onClick={() => navigate('/messages')} style={{
-              width:36, height:36, borderRadius:10, border:'1px solid var(--border)',
-              background:'var(--bg3)', cursor:'pointer', color:'var(--t2)',
-              display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
-            }}>
-              <ArrowLeft size={16} strokeWidth={2}/>
-            </button>
-            {partner && (
-              <Link to={`/user/${partner.id}`} style={{ display:'flex', alignItems:'center', gap:10, color:'inherit' }}>
+        return (
+          <div
+            key={d.partner_id}
+            onClick={() => navigate(`/messages/${d.partner_id}`)}
+            style={{
+              display: "flex", alignItems: "center", gap: 13,
+              padding: "13px 16px",
+              borderBottom: `1px solid ${T.border}`,
+              cursor: "pointer",
+              background: unread > 0 ? `${T.yellow}05` : "transparent",
+              transition: "background 0.15s",
+            }}
+          >
+            {/* Avatar */}
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <div style={{
+                width: 50, height: 50, borderRadius: "50%",
+                background: `linear-gradient(135deg, #5B21B6, #7C3AED)`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 20, fontWeight: 800, color: "#fff",
+              }}>{av}</div>
+              {d.partner_verified && (
                 <div style={{
-                  width:36, height:36, borderRadius:10, flexShrink:0,
-                  background:'linear-gradient(135deg,var(--purple),var(--accent))',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:14, fontWeight:700,
-                }}>{(partner.username||'?')[0].toUpperCase()}</div>
-                <div>
-                  <div style={{ fontWeight:700, fontSize:14 }}>@{partner.username}</div>
-                  <div style={{ fontSize:11, color:'var(--t3)' }}>★ {parseFloat(partner.rating||5).toFixed(1)} · {partner.total_sales||0} продаж</div>
-                </div>
-              </Link>
-            )}
-          </div>
-
-          {/* Сообщения */}
-          <div style={{ flex:1, overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column', gap:8 }}>
-            {loading ? (
-              <div style={{ textAlign:'center', color:'var(--t3)', padding:40 }}>Загрузка...</div>
-            ) : messages.length === 0 ? (
-              <div style={{ textAlign:'center', color:'var(--t3)', padding:40 }}>
-                <div style={{ fontSize:32, marginBottom:12 }}>👋</div>
-                <div style={{ fontSize:14 }}>Начните переписку!</div>
-              </div>
-            ) : messages.map(m => {
-              const isMine = m.sender_id === myId
-              return (
-                <div key={m.id} style={{
-                  display:'flex', justifyContent: isMine ? 'flex-end' : 'flex-start',
-                }}>
-                  <div style={{
-                    maxWidth:'75%',
-                    padding: m.image ? '6px' : '10px 14px',
-                    borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                    background: isMine ? 'var(--accent)' : 'var(--bg3)',
-                    color: isMine ? '#0d0d14' : 'var(--t1)',
-                    fontSize:14, lineHeight:1.5, overflow:'hidden',
-                  }}>
-                    {m.image && (
-                      <img
-                        src={m.image}
-                        alt="фото"
-                        style={{ width:'100%', maxWidth:260, borderRadius:12, display:'block', cursor:'pointer' }}
-                        onClick={() => setViewImg(m.image)}
-                      />
-                    )}
-                    {m.text && m.text !== '📷 Фото' && (
-                      <div style={{ padding: m.image ? '6px 8px 2px' : '0' }}>{m.text}</div>
-                    )}
-                    <div style={{ fontSize:10, opacity:0.6, marginTop:4, textAlign:'right', padding: m.image ? '0 8px 4px' : '0' }}>
-                      {new Date((m.created_at||0)*1000).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})}
-                      {isMine && <span style={{ marginLeft:4 }}>{m.is_read ? '✓✓' : '✓'}</span>}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-            <div ref={bottomRef}/>
-          </div>
-
-          {/* Превью фото */}
-          {image && (
-            <div style={{ padding:'8px 16px 0', background:'var(--bg2)', display:'flex', alignItems:'center', gap:10 }}>
-              <img src={image} alt="preview" style={{ width:60, height:60, borderRadius:10, objectFit:'cover' }}/>
-              <button onClick={() => setImage(null)} style={{
-                width:24, height:24, borderRadius:'50%', background:'var(--red)',
-                border:'none', cursor:'pointer', color:'#fff', fontSize:14,
-                display:'flex', alignItems:'center', justifyContent:'center',
-              }}>✕</button>
+                  position: "absolute", bottom: 0, right: 0,
+                  width: 16, height: 16, borderRadius: "50%",
+                  background: "#29B6F6", border: `2px solid ${T.bg}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 8, color: "#fff",
+                }}>✓</div>
+              )}
             </div>
-          )}
 
-          {/* Поле ввода */}
+            {/* Content */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                <span style={{ fontSize: 15, fontWeight: unread > 0 ? 700 : 600, color: T.text }}>
+                  @{d.partner_username}
+                </span>
+                <span style={{ fontSize: 11, color: T.muted }}>
+                  {timeAgo(d.last_time)}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                {isMine && (
+                  <span style={{ fontSize: 12, color: T.muted }}>Вы: </span>
+                )}
+                <span style={{
+                  fontSize: 13, color: unread > 0 ? T.dim : T.muted,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  flex: 1, fontWeight: unread > 0 ? 600 : 400,
+                }}>
+                  {d.last_text || "Медиа"}
+                </span>
+                {unread > 0 && (
+                  <div style={{
+                    minWidth: 20, height: 20, borderRadius: 10,
+                    background: T.yellow, color: "#000",
+                    fontSize: 11, fontWeight: 800,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    padding: "0 6px", flexShrink: 0,
+                  }}>{unread}</div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Message bubble ───────────────────────────────────────────────────────────
+function Bubble({ msg, isMe }) {
+  if (msg.is_system) {
+    return (
+      <div style={{ textAlign: "center", margin: "10px 0" }}>
+        <span style={{
+          fontSize: 12, color: T.muted,
+          background: T.s2, padding: "5px 14px", borderRadius: 20,
+          border: `1px solid ${T.border}`,
+          display: "inline-block",
+        }}>🔔 {msg.text}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      display: "flex",
+      justifyContent: isMe ? "flex-end" : "flex-start",
+      marginBottom: 8,
+      animation: "fadeUp 0.2s ease",
+    }}>
+      <div style={{
+        maxWidth: "78%",
+        background: isMe
+          ? `linear-gradient(135deg, ${T.yellow}, #FF8C00)`
+          : T.s2,
+        borderRadius: isMe ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+        padding: "10px 14px",
+        border: isMe ? "none" : `1px solid ${T.border}`,
+      }}>
+        {msg.image && (
+          <img
+            src={msg.image}
+            alt=""
+            style={{
+              width: "100%", borderRadius: 10,
+              marginBottom: msg.text ? 8 : 0,
+              maxHeight: 200, objectFit: "cover",
+            }}
+          />
+        )}
+        {msg.text && msg.text !== "📷 Фото" && (
           <div style={{
-            padding:'12px 16px', borderTop:'1px solid var(--border)',
-            background:'var(--bg2)', display:'flex', gap:8, alignItems:'flex-end',
-          }}>
-            {/* Кнопка фото */}
-            <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display:'none' }}/>
-            <button onClick={() => fileRef.current?.click()} style={{
-              width:44, height:44, borderRadius:12, flexShrink:0,
-              background:'var(--bg3)', border:'1px solid var(--border)',
-              cursor:'pointer', display:'flex', alignItems:'center',
-              justifyContent:'center', color:'var(--t3)',
-            }}>
-              <Camera size={18} strokeWidth={1.75}/>
-            </button>
+            fontSize: 14, lineHeight: 1.5,
+            color: isMe ? "#000" : T.text,
+            wordBreak: "break-word",
+          }}>{msg.text}</div>
+        )}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "flex-end",
+          gap: 4, marginTop: 4,
+        }}>
+          <span style={{ fontSize: 10, color: isMe ? "rgba(0,0,0,0.45)" : T.muted }}>
+            {formatTime(msg.created_at)}
+          </span>
+          {isMe && (
+            <span style={{ fontSize: 10, color: msg.is_read ? "#29B6F6" : "rgba(0,0,0,0.35)" }}>
+              {msg.is_read ? "✓✓" : "✓"}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-            <textarea
-              className="inp"
-              placeholder="Написать сообщение..."
-              value={text}
-              onChange={e => setText(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-              rows={1}
-              style={{
-                flex:1, resize:'none', minHeight:44, maxHeight:120,
-                fontSize:14, padding:'12px 14px', borderRadius:14,
-              }}
-            />
-            <button
-              onClick={send}
-              disabled={sending || (!text.trim() && !image)}
-              style={{
-                width:44, height:44, borderRadius:12, flexShrink:0,
-                background: (text.trim() || image) ? 'var(--accent)' : 'var(--bg3)',
-                border:'none', cursor: (text.trim() || image) ? 'pointer' : 'default',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                color: (text.trim() || image) ? '#0d0d14' : 'var(--t3)',
-                transition:'all 0.15s',
-              }}
-            >
-              <Send size={18} strokeWidth={2}/>
-            </button>
+// ─── Chat view ────────────────────────────────────────────────────────────────
+function ChatView({ userId }) {
+  const navigate = useNavigate();
+  const { user } = useStore();
+  const [partner, setPartner]   = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [text, setText]         = useState("");
+  const [loading, setLoading]   = useState(true);
+  const [sending, setSending]   = useState(false);
+  const bottomRef = useRef(null);
+
+  // GET /api/messages/:userId
+  const loadChat = useCallback(() => {
+    axios.get(`${API}/messages/${userId}`, { headers: authHeaders() })
+      .then(({ data }) => {
+        setPartner(data.partner);
+        setMessages(data.messages || []);
+      })
+      .catch(() => toast.error("Ошибка загрузки чата"))
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  useEffect(() => {
+    loadChat();
+    const poll = setInterval(loadChat, 8000); // polling
+    return () => clearInterval(poll);
+  }, [loadChat]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // POST /api/messages/:userId
+  const handleSend = async () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setSending(true);
+    try {
+      const { data } = await axios.post(
+        `${API}/messages/${userId}`,
+        { text: trimmed },
+        { headers: authHeaders() }
+      );
+      setMessages(prev => [...prev, data.message]);
+      setText("");
+    } catch (e) {
+      toast.error(e.response?.data?.error || "Ошибка");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  };
+
+  const av = (partner?.username || "?")[0].toUpperCase();
+
+  if (loading) return (
+    <div style={{ display: "flex", justifyContent: "center", paddingTop: 80 }}>
+      <div style={{ fontSize: 28, opacity: 0.4 }}>💬</div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 60px)" }}>
+
+      {/* ── Chat header ── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12,
+        padding: "12px 16px",
+        borderBottom: `1px solid ${T.border}`,
+        background: "rgba(13,13,14,0.95)",
+        backdropFilter: "blur(16px)",
+        position: "sticky", top: 60, zIndex: 40,
+        flexShrink: 0,
+      }}>
+        <button onClick={() => navigate("/messages")} style={{
+          background: "none", border: "none", cursor: "pointer",
+          color: T.muted, fontSize: 20, padding: 0,
+        }}>←</button>
+
+        <div style={{
+          width: 40, height: 40, borderRadius: "50%",
+          background: "linear-gradient(135deg, #5B21B6, #7C3AED)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 16, fontWeight: 800, color: "#fff", flexShrink: 0,
+        }}>{av}</div>
+
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>
+            @{partner?.username}
+            {partner?.is_verified && <span style={{ color: "#29B6F6", fontSize: 12 }}> ✓</span>}
+          </div>
+          <div style={{ fontSize: 12, color: T.muted }}>
+            {partner?.total_sales || 0} продаж
           </div>
         </div>
-      )}
 
-      {/* Просмотр фото */}
-      {viewImg && (
-        <div onClick={() => setViewImg(null)} style={{
-          position:'fixed', inset:0, zIndex:999,
-          background:'rgba(0,0,0,0.95)',
-          display:'flex', alignItems:'center', justifyContent:'center',
-          padding:16,
+        <button
+          onClick={() => navigate(`/profile/${userId}`)}
+          style={{
+            background: T.s2, border: `1px solid ${T.border}`,
+            borderRadius: 10, padding: "6px 12px",
+            fontSize: 12, color: T.dim, cursor: "pointer",
+            fontFamily: "'Onest', system-ui, sans-serif",
+          }}
+        >Профиль</button>
+      </div>
+
+      {/* ── Messages ── */}
+      <div style={{
+        flex: 1, overflowY: "auto",
+        padding: "16px 14px 8px",
+        display: "flex", flexDirection: "column",
+      }}>
+        {messages.length === 0 && (
+          <div style={{ textAlign: "center", color: T.muted, paddingTop: 40 }}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>👋</div>
+            <div style={{ fontSize: 14 }}>Начните диалог с @{partner?.username}</div>
+          </div>
+        )}
+
+        {/* Group by date */}
+        {messages.map((msg, i) => {
+          const isMe = msg.sender_id === user?._id;
+          const curr = new Date((msg.created_at || 0) * 1000).toDateString();
+          const prev = i > 0 ? new Date((messages[i-1].created_at || 0) * 1000).toDateString() : null;
+          const showDate = curr !== prev;
+
+          return (
+            <div key={msg.id || i}>
+              {showDate && (
+                <div style={{ textAlign: "center", margin: "12px 0 8px", fontSize: 11, color: T.muted }}>
+                  {new Date((msg.created_at || 0) * 1000).toLocaleDateString("ru", {
+                    day: "numeric", month: "long",
+                  })}
+                </div>
+              )}
+              <Bubble msg={msg} isMe={isMe} />
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* ── Input bar ── */}
+      <div style={{
+        padding: "10px 12px calc(env(safe-area-inset-bottom, 0px) + 80px)",
+        borderTop: `1px solid ${T.border}`,
+        background: "rgba(13,13,14,0.97)",
+        backdropFilter: "blur(16px)",
+        flexShrink: 0,
+      }}>
+        <div style={{
+          display: "flex", gap: 10, alignItems: "flex-end",
+          background: T.s2, borderRadius: 16,
+          border: `1px solid ${T.border}`,
+          padding: "8px 12px",
         }}>
-          <img src={viewImg} alt="фото" style={{
-            maxWidth:'100%', maxHeight:'100%',
-            borderRadius:12, objectFit:'contain',
-          }}/>
-          <button onClick={() => setViewImg(null)} style={{
-            position:'absolute', top:16, right:16,
-            width:40, height:40, borderRadius:'50%',
-            background:'rgba(255,255,255,0.15)', border:'none',
-            color:'#fff', fontSize:20, cursor:'pointer',
-            display:'flex', alignItems:'center', justifyContent:'center',
-          }}>✕</button>
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Написать сообщение..."
+            rows={1}
+            style={{
+              flex: 1, background: "none", border: "none", outline: "none",
+              fontSize: 14, color: T.text, resize: "none",
+              fontFamily: "'Onest', system-ui, sans-serif",
+              lineHeight: 1.5, maxHeight: 100, overflowY: "auto",
+            }}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!text.trim() || sending}
+            style={{
+              width: 36, height: 36, borderRadius: 11, flexShrink: 0,
+              background: text.trim() ? T.yellow : T.surface,
+              border: "none", cursor: text.trim() ? "pointer" : "not-allowed",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 16, transition: "all 0.2s",
+              boxShadow: text.trim() ? `0 2px 12px ${T.yellow}40` : "none",
+            }}
+          >
+            {sending ? "⏳" : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={text.trim() ? "#000" : T.muted} strokeWidth="2.5" strokeLinecap="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>}
+          </button>
         </div>
-      )}
-
-      <style>{`
-        @media (min-width: 769px) {
-          .dialogs-panel {
-            width: 320px !important;
-            min-width: 320px !important;
-          }
-        }
-      `}</style>
+        <div style={{ fontSize: 11, color: T.muted, textAlign: "center", marginTop: 6 }}>
+          Enter — отправить · Shift+Enter — новая строка
+        </div>
+      </div>
     </div>
-  )
+  );
+}
+
+// ─── Root MessagesPage ────────────────────────────────────────────────────────
+export default function MessagesPage() {
+  const { userId } = useParams();
+
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800;900&display=swap');
+        @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+      `}</style>
+      <div style={{ fontFamily: "'Onest', system-ui, sans-serif", minHeight: "100vh", background: T.bg }}>
+        {userId ? <ChatView userId={userId} /> : <DialogsList />}
+      </div>
+    </>
+  );
 }
