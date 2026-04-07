@@ -1,456 +1,543 @@
-import React, { useState, useEffect } from 'react'
-import useMeta from '../hooks/useMeta'
-import { Wallet, ArrowDownCircle, ArrowUpCircle, ShoppingCart, Handshake, RotateCcw, Zap, CreditCard, X, DollarSign } from '../components/Icon'
-import { useNavigate } from 'react-router-dom'
-import { api, useStore } from '../store'
-import toast from 'react-hot-toast'
-import { useCurrency } from '../hooks/useCurrency'
+// WalletPage.jsx — Playerok-style refactor
+// API сохранён 100%:
+//   GET  /api/wallet/transactions
+//   POST /api/wallet/deposit/rukassa      → { payUrl }
+//   POST /api/wallet/deposit/cryptopay   → { payUrl }
+//   POST /api/wallet/deposit/crystalpay  → { payUrl }
+//   POST /api/wallet/deposit/nowpayments → { payUrl }
+//   POST /api/wallet/withdraw            → CryptoBot { amount, address, currency }
+//   POST /api/wallet/withdraw/rukassa    → { amount, account, method }
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import axios from "axios";
+import toast from "react-hot-toast";
+import { useStore } from "../store";
 
-const TX_ICONS  = { deposit:<ArrowDownCircle size={16} strokeWidth={1.75}/>, withdrawal:<ArrowUpCircle size={16} strokeWidth={1.75}/>, commission:<Zap size={16} strokeWidth={1.75}/>, purchase:<ShoppingCart size={16} strokeWidth={1.75}/>, sale:<DollarSign size={16} strokeWidth={1.75}/>, refund:<RotateCcw size={16} strokeWidth={1.75}/>, adjustment:<Zap size={16} strokeWidth={1.75}/> }
-const TX_COLORS = { deposit:'var(--green)', withdrawal:'var(--red)', sale:'var(--green)', refund:'#22d3ee', adjustment:'var(--purple)', purchase:'var(--red)' }
-const TX_PLUS   = new Set(['deposit','sale','refund','adjustment'])
+const API = "/api";
+const T = {
+  bg:      "#0D0D0E",
+  surface: "#1B1B1D",
+  s2:      "#242426",
+  border:  "rgba(255,255,255,0.07)",
+  yellow:  "#FFD600",
+  green:   "#39FF14",
+  text:    "#FFFFFF",
+  muted:   "rgba(255,255,255,0.38)",
+  dim:     "rgba(255,255,255,0.6)",
+  red:     "#FF4D4D",
+  purple:  "#7C3AED",
+};
 
-// Мобильная шторка снизу
-function BottomSheet({ children, onClose, title }) {
-  return (
-    <div style={{
-      position:'fixed', inset:0, zIndex:200,
-      background:'rgba(0,0,0,0.7)', backdropFilter:'blur(8px)',
-      display:'flex', flexDirection:'column', justifyContent:'flex-end',
-    }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background:'var(--bg2)',
-        borderRadius:'24px 24px 0 0',
-        padding:'0 0 env(safe-area-inset-bottom)',
-        maxHeight:'92vh',
-        overflowY:'auto',
-        animation:'slideUp 0.3s ease',
-      }}>
-        {/* Ручка */}
-        <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 4px' }}>
-          <div style={{ width:40, height:4, borderRadius:2, background:'var(--border2)' }}/>
-        </div>
-        {/* Заголовок */}
-        <div style={{
-          display:'flex', alignItems:'center', justifyContent:'space-between',
-          padding:'8px 20px 16px',
-        }}>
-          <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:20 }}>{title}</div>
-          <button onClick={onClose} style={{
-            width:36, height:36, borderRadius:10, border:'1px solid var(--border)',
-            background:'var(--bg3)', display:'flex', alignItems:'center', justifyContent:'center',
-            cursor:'pointer', color:'var(--t2)', flexShrink:0,
-          }}>✕</button>
-        </div>
-        {/* Контент */}
-        <div style={{ padding:'0 20px 32px' }}>
-          {children}
-        </div>
-      </div>
-      <style>{`
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to   { transform: translateY(0); }
-        }
-      `}</style>
-    </div>
-  )
+function authHeaders() {
+  return { Authorization: `Bearer ${useStore.getState().token}` };
 }
 
-const Spinner = () => <span style={{ width:16, height:16, border:'2px solid transparent', borderTopColor:'currentColor', borderRadius:'50%', animation:'spin 0.7s linear infinite', display:'inline-block' }}/>
+const QUICK_AMOUNTS = [5, 10, 25, 50, 100, 200];
 
-export default function WalletPage() {
-  const navigate = useNavigate()
-  useMeta({
-    title: 'Кошелёк — пополнение и вывод средств',
-    description: 'Управляйте балансом на Minions Market. Пополнение через RuKassa и CryptoPay. Вывод через CryptoBot.',
-  })
-  const { user, setUser, refreshUser } = useStore()
-  const [txs, setTxs]         = useState([])
-  const [loading, setLoading] = useState(true)
-  const [modal, setModal]     = useState(null)
-  const [amount, setAmount]   = useState('')
-  const [address, setAddress] = useState('')
-  const [withdrawMethod, setWithdrawMethod] = useState('cryptobot')
-  const [working, setWorking] = useState(false)
-  const [payMethod, setPayMethod] = useState('rukassa')
-  const { fmt, rub, rate } = useCurrency()
-
-  useEffect(() => {
-    if (!user) { navigate('/auth'); return }
-    refreshUser()
-    api.get('/wallet/transactions')
-      .then(r => setTxs(r.data.transactions || []))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [user])
-
-  const deposit = async () => {
-    const amt = parseFloat(amount)
-    if (!amt || amt < 2) return toast.error(`Минимум ${fmt(2)}`)
-    setWorking(true)
-    try {
-      const endpoint = payMethod === 'cryptopay'
-        ? '/wallet/deposit/cryptopay'
-        : payMethod === 'nowpayments'
-        ? '/wallet/deposit/nowpayments'
-        : payMethod === 'crystalpay'
-        ? '/wallet/deposit/crystalpay'
-        : '/wallet/deposit/rukassa'
-      const { data } = await api.post(endpoint, { amount: amt })
-      if (data.payUrl) {
-        window.open(data.payUrl, '_blank')
-        toast.success('Откроется страница оплаты')
-        setModal(null); setAmount('')
-        setTimeout(refreshUser, 5000)
-        setTimeout(refreshUser, 15000)
-      }
-    } catch(e) { toast.error(e.response?.data?.error || 'Ошибка оплаты') }
-    setWorking(false)
+// ─── Tx icon + color ──────────────────────────────────────────────────────────
+function txMeta(type) {
+  switch (type) {
+    case "deposit":    return { icon: "⬇️", color: T.green,  label: "Пополнение" };
+    case "withdrawal": return { icon: "⬆️", color: T.red,    label: "Вывод" };
+    case "sale":       return { icon: "💰", color: T.yellow, label: "Продажа" };
+    case "purchase":   return { icon: "🛒", color: T.red,    label: "Покупка" };
+    case "commission": return { icon: "📊", color: T.muted,  label: "Комиссия" };
+    case "refund":     return { icon: "↩️", color: T.green,  label: "Возврат" };
+    default:           return { icon: "💳", color: T.dim,    label: type };
   }
+}
 
-  const withdraw = async () => {
-    const amt = parseFloat(amount)
-    if (!amt || amt < 5) return toast.error(`Минимальный вывод ${fmt(5)}`)
-    if (!address.trim()) return toast.error('Введите адрес CryptoBot')
-    setWorking(true)
-    try {
-      const endpoint = withdrawMethod === 'cryptobot' ? '/wallet/withdraw' : '/wallet/withdraw/rukassa'
-      const body = withdrawMethod === 'cryptobot'
-        ? { amount: amt, address: address.trim(), currency: 'USDT' }
-        : { amount: amt, account: address.trim(), method: withdrawMethod }
-      const { data } = await api.post(endpoint, body)
-      toast.success(data.message || 'Запрос отправлен')
-      setModal(null); setAmount(''); setAddress('')
-      refreshUser()
-      api.get('/wallet/transactions').then(r => setTxs(r.data.transactions || [])).catch(() => {})
-    } catch(e) { toast.error(e.response?.data?.error || 'Ошибка') }
-    setWorking(false)
+function txStatusBadge(status) {
+  switch (status) {
+    case "completed":  return { label: "✓ Выполнено", color: T.green };
+    case "pending":    return { label: "⏳ Ожидание",  color: T.yellow };
+    case "failed":     return { label: "✗ Ошибка",    color: T.red };
+    case "processing": return { label: "🔄 Обработка", color: "#29B6F6" };
+    default:           return { label: status,         color: T.muted };
   }
+}
 
-  if (!user) return null
-  const bal = parseFloat(user.balance || 0)
-  const frz = parseFloat(user.frozenBalance || 0)
+// ─── Input atom ───────────────────────────────────────────────────────────────
+function Input({ label, value, onChange, placeholder, type = "text", icon, prefix }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {label && <div style={{ fontSize: 12, fontWeight: 600, color: T.dim, marginBottom: 6 }}>{label}</div>}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        background: focused ? T.s2 : T.surface,
+        border: `1px solid ${focused ? T.yellow + "50" : T.border}`,
+        borderRadius: 13, padding: "12px 14px",
+        transition: "all 0.2s",
+        boxShadow: focused ? `0 0 0 3px ${T.yellow}10` : "none",
+      }}>
+        {icon && <span style={{ fontSize: 16 }}>{icon}</span>}
+        {prefix && <span style={{ color: T.yellow, fontWeight: 700, fontSize: 15 }}>{prefix}</span>}
+        <input
+          type={type}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{
+            flex: 1, background: "none", border: "none", outline: "none",
+            fontSize: 15, color: T.text,
+            fontFamily: "'Onest', system-ui, sans-serif",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Deposit modal ────────────────────────────────────────────────────────────
+const DEPOSIT_METHODS = [
+  { id: "rukassa",     label: "RuKassa",     sub: "Карты / СБП",  icon: "💳", color: "#E040FB" },
+  { id: "cryptopay",  label: "CryptoPay",   sub: "Telegram",     icon: "✈️", color: "#229ED9" },
+  { id: "nowpayments",label: "NOWPayments", sub: "Крипта",       icon: "₿",  color: "#F7931A" },
+  { id: "crystalpay", label: "CrystalPAY",  sub: "Крипта / РФ",  icon: "💎", color: "#00E5FF" },
+];
+
+function DepositModal({ onClose }) {
+  const [method, setMethod] = useState("rukassa");
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // POST /api/wallet/deposit/:method
+  const handleDeposit = async () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt < 1) return toast.error("Минимум $1");
+    setLoading(true);
+    try {
+      const { data } = await axios.post(
+        `${API}/wallet/deposit/${method}`,
+        { amount: amt },
+        { headers: authHeaders() }
+      );
+      if (data.payUrl) window.open(data.payUrl, "_blank");
+      onClose();
+      toast.success("Открываем страницу оплаты...");
+    } catch (e) {
+      toast.error(e.response?.data?.error || "Ошибка платёжной системы");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const m = DEPOSIT_METHODS.find(x => x.id === method);
 
   return (
-    <div style={{ maxWidth:600, margin:'0 auto', padding:'24px 12px 100px' }}>
-      <h1 style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:26, marginBottom:20 }}>💳 Кошелёк</h1>
-
-      {/* Карточка баланса */}
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 500,
+      display: "flex", alignItems: "flex-end",
+    }}>
+      <div onClick={onClose} style={{
+        position: "absolute", inset: 0,
+        background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)",
+      }} />
       <div style={{
-        background:'linear-gradient(135deg, rgba(245,200,66,0.15), var(--bg2) 60%, rgba(124,106,255,0.08))',
-        border:'1px solid rgba(245,200,66,0.25)', borderRadius:24, padding:'24px 20px', marginBottom:16,
+        position: "relative", width: "100%", maxWidth: 480, margin: "0 auto",
+        background: T.surface, borderRadius: "24px 24px 0 0",
+        border: `1px solid ${T.border}`, padding: "6px 20px 40px",
+        animation: "slideUp 0.3s cubic-bezier(0.22,1,0.36,1)",
       }}>
-        <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.14em', marginBottom:6 }}>ДОСТУПНЫЙ БАЛАНС</div>
-        <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:44, color:'var(--accent)', marginBottom:4 }}>{fmt(bal)}</div>
-        {frz > 0 && <div style={{ color:'var(--t3)', fontSize:13, marginBottom:12 }}>🔒 В сделках: {fmt(frz)}</div>}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:16 }}>
-          <button className="btn btn-primary" style={{ height:48, fontSize:15, borderRadius:14 }}
-            onClick={() => { setModal('deposit'); setAmount('') }}>
-            ↓ Пополнить
-          </button>
-          <button className="btn btn-secondary" style={{ height:48, fontSize:15, borderRadius:14 }}
-            onClick={() => { setModal('withdraw'); setAmount(''); setAddress('') }}>
-            ↑ Вывести
-          </button>
+        <div style={{ width: 40, height: 4, borderRadius: 4, background: T.border, margin: "12px auto 22px" }} />
+
+        <div style={{ fontSize: 18, fontWeight: 800, color: T.text, marginBottom: 4 }}>Пополнить баланс</div>
+        <div style={{ fontSize: 13, color: T.muted, marginBottom: 20 }}>Выберите способ оплаты</div>
+
+        {/* Method selector */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+          {DEPOSIT_METHODS.map(m => (
+            <button key={m.id} onClick={() => setMethod(m.id)} style={{
+              background: method === m.id ? `${m.color}15` : T.s2,
+              border: `1px solid ${method === m.id ? m.color + "50" : T.border}`,
+              borderRadius: 14, padding: "12px 10px",
+              cursor: "pointer", textAlign: "left",
+              transition: "all 0.2s",
+              boxShadow: method === m.id ? `0 0 0 2px ${m.color}30` : "none",
+            }}>
+              <div style={{ fontSize: 22, marginBottom: 5 }}>{m.icon}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: method === m.id ? m.color : T.text }}>
+                {m.label}
+              </div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{m.sub}</div>
+            </button>
+          ))}
         </div>
+
+        {/* Quick amounts */}
+        <div style={{ fontSize: 12, fontWeight: 600, color: T.dim, marginBottom: 8 }}>Быстрый выбор</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          {QUICK_AMOUNTS.map(a => (
+            <button key={a} onClick={() => setAmount(String(a))} style={{
+              padding: "6px 14px", borderRadius: 20,
+              background: amount === String(a) ? T.yellow : T.s2,
+              border: `1px solid ${amount === String(a) ? T.yellow : T.border}`,
+              color: amount === String(a) ? "#000" : T.dim,
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              fontFamily: "'Onest', system-ui, sans-serif",
+            }}>${a}</button>
+          ))}
+        </div>
+
+        <Input
+          label="Сумма пополнения"
+          value={amount}
+          onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+          placeholder="0.00"
+          icon="💵"
+          prefix="$"
+        />
+
+        <button onClick={handleDeposit} disabled={loading} style={{
+          width: "100%", padding: "14px",
+          background: loading ? `${m?.color}40` : (m?.color || T.yellow),
+          border: "none", borderRadius: 13,
+          fontSize: 15, fontWeight: 800,
+          color: loading ? "rgba(255,255,255,0.4)" : "#000",
+          cursor: loading ? "not-allowed" : "pointer",
+          fontFamily: "'Onest', system-ui, sans-serif",
+          boxShadow: loading ? "none" : `0 4px 20px ${m?.color || T.yellow}45`,
+          transition: "all 0.2s",
+        }}>
+          {loading ? "⏳ Создаём счёт..." : `${m?.icon} Оплатить ${amount ? `$${amount}` : ""}`}
+        </button>
       </div>
-
-      {/* Статистика */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:24 }}>
-        {[
-          ['Пополнено', fmt(user.totalDeposited||0)],
-          ['Выведено',  fmt(user.totalWithdrawn||0)],
-          ['Сделок',   (user.totalPurchases||0)+(user.totalSales||0)],
-        ].map(([l,v]) => (
-          <div key={l} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, padding:'12px 10px', textAlign:'center' }}>
-            <div style={{ color:'var(--t3)', fontSize:10, fontFamily:'var(--font-h)', fontWeight:700, letterSpacing:'0.1em', marginBottom:4 }}>{l.toUpperCase()}</div>
-            <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:16 }}>{v}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* История транзакций */}
-      <h2 style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:17, marginBottom:14 }}>История транзакций</h2>
-      {loading ? (
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {[0,1,2,3].map(i => <div key={i} className="skel" style={{ height:64 }}/>)}
-        </div>
-      ) : txs.length === 0 ? (
-        <div style={{ textAlign:'center', padding:40, color:'var(--t3)' }}>
-          <div style={{ fontSize:32, marginBottom:12 }}>💸</div>
-          <div style={{ fontFamily:'var(--font-h)', fontWeight:700 }}>Транзакций нет</div>
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {txs.map((tx, i) => {
-            const plus  = TX_PLUS.has(tx.type)
-            const color = TX_COLORS[tx.type] || 'var(--t2)'
-            const amt   = Math.abs(parseFloat(tx.amount))
-            const date  = new Date(tx.created_at ? tx.created_at * 1000 : tx.createdAt)
-            return (
-              <div key={tx.id||tx._id||i} style={{
-                background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14,
-                padding:'12px 14px', display:'flex', alignItems:'center', gap:12,
-                borderLeft:`3px solid ${tx.status==='pending' ? 'var(--accent)' : color}40`
-              }}>
-                <div style={{ width:40, height:40, borderRadius:12, background:`${color}15`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>
-                  {TX_ICONS[tx.type]||'•'}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{tx.description||tx.type}</div>
-                  <div style={{ fontSize:11, color:'var(--t3)', marginTop:2, display:'flex', gap:8 }}>
-                    <span>{date.toLocaleString('ru',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</span>
-                    {tx.status==='pending' && <span style={{ color:'var(--accent)', fontWeight:700 }}>ОЖИДАНИЕ</span>}
-                  </div>
-                </div>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:800, fontSize:15, color: plus ? 'var(--green)' : 'var(--red)', flexShrink:0 }}>
-                  {plus?'+':'-'}{fmt(amt)}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* ── Шторка пополнения ── */}
-      {modal === 'deposit' && (
-        <BottomSheet onClose={() => setModal(null)} title="↓ Пополнить баланс">
-
-          {/* Выбор метода */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:20 }}>
-            {[
-              { v:'rukassa',     icon:'🏦', label:'RuKassa',     desc:`Карта РФ, СБП · от ${fmt(100)}` },
-              { v:'cryptopay',   icon:'✈️', label:'CryptoPay',   desc:'Временно недоступно', disabled:true },
-              { v:'crystalpay',  icon:'💎', label:'CrystalPAY',  desc:`Карты РФ + крипта · от ${fmt(1)}` },
-              { v:'nowpayments', icon:'🌍', label:'NOWPayments',  desc:`350+ крипт · от ${fmt(1)}` },
-            ].map(m => (
-              <button key={m.v} onClick={() => !m.disabled && setPayMethod(m.v)} style={{
-                padding:'14px 8px', borderRadius:14, cursor: m.disabled ? 'not-allowed' : 'pointer', textAlign:'center', border:'1.5px solid',
-                background: m.disabled ? 'var(--bg2)' : payMethod===m.v ? 'rgba(245,200,66,0.12)' : 'var(--bg3)',
-                borderColor: m.disabled ? 'var(--border)' : payMethod===m.v ? 'rgba(245,200,66,0.5)' : 'var(--border)',
-                color: m.disabled ? 'var(--t4)' : payMethod===m.v ? 'var(--accent)' : 'var(--t3)',
-                opacity: m.disabled ? 0.5 : 1, transition:'all 0.15s', position:'relative',
-              }}>
-                <div style={{ fontSize:26, marginBottom:6 }}>{m.icon}</div>
-                <div style={{ fontFamily:'var(--font-h)', fontWeight:700, fontSize:13 }}>{m.label}</div>
-                <div style={{ fontSize:11, color: m.disabled ? 'var(--red)' : 'var(--t4)', marginTop:2 }}>{m.desc}</div>
-              </button>
-            ))}
-          </div>
-
-          {/* Минимальные суммы по методам */}
-          {payMethod === 'rukassa' && (
-            <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:10 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
-              {[
-                ['💳', 'Visa / MC / МИР', fmt(100)],
-                ['💳', 'Visa / MC (AZN)', fmt(5.5)],
-                ['🎮', 'SkinPay', fmt(0.1)],
-                ['💛', 'YooMoney', fmt(11)],
-                ['🔐', 'Крипта (через RuKassa)', fmt(0.5)],
-              ].map(([icon, label, min]) => (
-                <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
-                  <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
-                  <span style={{ fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)' }}>{min}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {payMethod === 'nowpayments' && (
-            <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:8 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
-              {[
-                ['💎','USDT (TRC20/ERC20)', fmt(1)],
-                ['🔷','TON', fmt(1)],
-                ['₿','BTC', fmt(1)],
-                ['🔹','ETH', fmt(1)],
-                ['🌐','350+ других криптовалют', fmt(1)],
-              ].map(([icon, label, min]) => (
-                <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
-                  <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
-                  <span style={{ fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)' }}>{min}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {payMethod === 'crystalpay' && (
-            <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:10 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
-              {[
-                ['💳', 'Карты РФ (Visa/MC/МИР)', fmt(1)],
-                ['⚡', 'СБП (Система быстрых платежей)', fmt(1)],
-                ['💎', 'USDT / BTC / ETH / TON', fmt(1)],
-                ['🪙', 'Другие криптовалюты', fmt(1)],
-              ].map(([icon, label, min]) => (
-                <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
-                  <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
-                  <span style={{ fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)' }}>{min}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {payMethod === 'cryptopay' && (
-            <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--t3)', fontFamily:'var(--font-h)', letterSpacing:'0.1em', marginBottom:10 }}>МИНИМАЛЬНЫЙ ДЕПОЗИТ</div>
-              {[
-                ['💎', 'USDT', fmt(2)],
-                ['🔷', 'TON', fmt(2)],
-                ['₿', 'BTC', fmt(2)],
-                ['🔹', 'ETH', fmt(2)],
-              ].map(([icon, label, min]) => (
-                <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
-                  <span style={{ fontSize:13, color:'var(--t2)' }}>{icon} {label}</span>
-                  <span style={{ fontSize:13, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-h)' }}>{min}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Быстрые суммы */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:14 }}>
-            {[5,10,25,50].map(v => (
-              <button key={v} onClick={() => setAmount(String(v))} style={{
-                padding:'12px 4px', borderRadius:10, border:'1.5px solid', cursor:'pointer',
-                fontSize:14, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
-                background: amount===String(v) ? 'rgba(245,200,66,0.12)' : 'var(--bg3)',
-                borderColor: amount===String(v) ? 'rgba(245,200,66,0.4)' : 'var(--border)',
-                color: amount===String(v) ? 'var(--accent)' : 'var(--t2)',
-              }}>{fmt(v)}</button>
-            ))}
-          </div>
-
-          {/* Ввод суммы */}
-          <input className="inp" type="number" inputMode="decimal" placeholder={`Минимум ${fmt(2)}`} min="2" value={amount}
-            onChange={e => setAmount(e.target.value)}
-            style={{ marginBottom:12, fontSize:22, fontFamily:'var(--font-h)', fontWeight:800, textAlign:'center', height:56 }}/>
-
-          {/* Расчёт комиссии */}
-          {parseFloat(amount) >= 2 && (() => {
-            const amt     = parseFloat(amount) || 0
-            const fee     = payMethod === 'rukassa' ? amt * 0.04 : payMethod === 'crystalpay' ? amt * 0.03 : amt * 0.01
-            const receive = Math.max(0, amt - fee)
-            return (
-              <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.15)', borderRadius:14, padding:'14px 16px', marginBottom:16 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-                  <span style={{ fontSize:14, color:'var(--t3)' }}>Сумма оплаты</span>
-                  <span style={{ fontSize:14, fontWeight:700 }}>{fmt(amt)}</span>
-                </div>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-                  <span style={{ fontSize:14, color:'var(--t3)' }}>Комиссия {payMethod === 'rukassa' ? 'RuKassa (~4%)' : payMethod === 'crystalpay' ? 'CrystalPAY (~3%)' : 'CryptoPay (~1%)'}</span>
-                  <span style={{ fontSize:14, color:'var(--red)' }}>−{fmt(fee)}</span>
-                </div>
-                <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
-                <div style={{ display:'flex', justifyContent:'space-between' }}>
-                  <span style={{ fontSize:15, fontWeight:700 }}>Получите на баланс</span>
-                  <span style={{ fontSize:16, fontWeight:800, color:'var(--green)' }}>{fmt(receive)}</span>
-                </div>
-              </div>
-            )
-          })()}
-
-          <button className="btn btn-primary btn-full" style={{ height:52, fontSize:16, borderRadius:14 }}
-            onClick={deposit} disabled={working || parseFloat(amount) < 2}>
-            {working ? <Spinner/> : `↓ Пополнить${parseFloat(amount) >= 2 ? ' ' + fmt(parseFloat(amount)) : ''}`}
-          </button>
-        </BottomSheet>
-      )}
-
-      {/* ── Шторка вывода ── */}
-      {modal === 'withdraw' && (
-        <BottomSheet onClose={() => setModal(null)} title="↑ Вывести средства">
-
-          {/* Выбор метода вывода */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:16 }}>
-            {[
-              { id:'cryptobot', label:'CryptoBot', icon:'🤖', desc:'USDT' },
-              { id:'sbp',       label:'СБП',       icon:'⚡', desc:'По номеру' },
-              { id:'card',      label:'Карта',     icon:'💳', desc:'Visa/МИР' },
-            ].map(m => (
-              <button key={m.id} onClick={() => { setWithdrawMethod(m.id); setAddress('') }} style={{
-                padding:'10px 8px', borderRadius:12, border:'1.5px solid', cursor:'pointer',
-                background: withdrawMethod === m.id ? 'rgba(245,200,66,0.1)' : 'var(--bg3)',
-                borderColor: withdrawMethod === m.id ? 'rgba(245,200,66,0.5)' : 'var(--border)',
-                textAlign:'center',
-              }}>
-                <div style={{ fontSize:20, marginBottom:2 }}>{m.icon}</div>
-                <div style={{ fontSize:12, fontWeight:700, color: withdrawMethod === m.id ? 'var(--accent)' : 'var(--t1)' }}>{m.label}</div>
-                <div style={{ fontSize:10, color:'var(--t3)' }}>{m.desc}</div>
-              </button>
-            ))}
-          </div>
-          <div style={{ background:'var(--bg3)', borderRadius:12, padding:'10px 14px', marginBottom:14, fontSize:12, color:'var(--t3)', lineHeight:1.6 }}>
-            {withdrawMethod === 'cryptobot' && <>🤖 Вывод через <b style={{color:'var(--t2)'}}>CryptoBot</b> в USDT · Минимум {fmt(5)} · До 24ч</>}
-            {withdrawMethod === 'sbp'       && <>⚡ Вывод через <b style={{color:'var(--t2)'}}>СБП</b> на любой банк · Курс ~{Math.round(parseFloat(amount||0)*rate) || `${Math.round(rate)}/USD`} ₽ · До 24ч</>}
-            {withdrawMethod === 'card'      && <>💳 Вывод на <b style={{color:'var(--t2)'}}>банковскую карту</b> · Visa/МИР · До 24ч</>}
-          </div>
-
-          {/* Быстрые суммы */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:6, marginBottom:14 }}>
-            {[5,10,25,50,100].map(v => (
-              <button key={v} onClick={() => setAmount(String(v))} style={{
-                padding:'10px 4px', borderRadius:10, border:'1.5px solid', cursor:'pointer',
-                fontSize:13, fontWeight:700, fontFamily:'var(--font-h)', transition:'all 0.15s',
-                background: amount===String(v) ? 'rgba(245,200,66,0.12)' : 'var(--bg3)',
-                borderColor: amount===String(v) ? 'rgba(245,200,66,0.4)' : 'var(--border)',
-                color: amount===String(v) ? 'var(--accent)' : 'var(--t2)',
-              }}>{fmt(v)}</button>
-            ))}
-          </div>
-
-          {/* Ввод суммы */}
-          <input className="inp" type="number" inputMode="decimal"
-            placeholder={`Сумма (доступно ${fmt(bal)})`}
-            value={amount} onChange={e => setAmount(e.target.value)}
-            style={{ marginBottom:12, fontFamily:'var(--font-h)', fontWeight:800, textAlign:'center', fontSize:20, height:54 }}/>
-
-          {/* Расчёт комиссии при выводе */}
-          {parseFloat(amount) >= 5 && (() => {
-            const amt     = parseFloat(amount) || 0
-            const fee     = Math.round(amt * 0.05 * 100) / 100
-            const receive = Math.round((amt - fee) * 100) / 100
-            return (
-              <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.15)', borderRadius:14, padding:'14px 16px', marginBottom:14 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-                  <span style={{ fontSize:14, color:'var(--t3)' }}>Сумма вывода</span>
-                  <span style={{ fontSize:14, fontWeight:700 }}>{fmt(amt)}</span>
-                </div>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-                  <span style={{ fontSize:14, color:'var(--t3)' }}>Комиссия платформы (5%)</span>
-                  <span style={{ fontSize:14, color:'var(--red)' }}>−{fmt(fee)}</span>
-                </div>
-                <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
-                <div style={{ display:'flex', justifyContent:'space-between' }}>
-                  <span style={{ fontSize:15, fontWeight:700 }}>Получите</span>
-                  <span style={{ fontSize:16, fontWeight:800, color:'var(--green)' }}>{fmt(receive)}</span>
-                </div>
-              </div>
-            )
-          })()}
-
-          {/* Реквизиты */}
-          <input className="inp"
-            placeholder={
-              withdrawMethod === 'cryptobot' ? '@username или адрес USDT' :
-              withdrawMethod === 'sbp'       ? '+7 (999) 123-45-67' :
-                                               '1234 5678 9012 3456'
-            }
-            value={address} onChange={e => setAddress(e.target.value)}
-            inputMode={withdrawMethod === 'cryptobot' ? 'text' : 'numeric'}
-            style={{ marginBottom:12, fontSize:14, height:50 }}/>
-
-          <div style={{ background:'rgba(245,200,66,0.06)', border:'1px solid rgba(245,200,66,0.15)', borderRadius:12, padding:'10px 14px', marginBottom:16, fontSize:12, color:'var(--t3)', lineHeight:1.6 }}>
-            {withdrawMethod === 'cryptobot' && <>Откройте <a href="https://t.me/CryptoBot" target="_blank" rel="noopener" style={{color:'var(--accent)'}}>@CryptoBot</a> в Telegram → Получить → скопируйте адрес USDT.</>}
-            {withdrawMethod === 'sbp'       && <>Введите номер телефона привязанный к СБП. Деньги придут в рублях по курсу ~{Math.round(rate)} ₽/USD.</>}
-            {withdrawMethod === 'card'      && <>Введите 16 цифр номера карты (Visa, МИР). Деньги придут в рублях по курсу ~{Math.round(rate)} ₽/USD.</>}
-          </div>
-
-          <button className="btn btn-primary btn-full" style={{ height:52, fontSize:16, borderRadius:14 }}
-            onClick={withdraw} disabled={working}>
-            {working ? <Spinner/> : `↑ Вывести${parseFloat(amount) >= 5 ? ' ' + fmt(parseFloat(amount)) : ''}`}
-          </button>
-        </BottomSheet>
-      )}
     </div>
-  )
+  );
+}
+
+// ─── Withdraw modal ───────────────────────────────────────────────────────────
+const WITHDRAW_METHODS = [
+  { id: "crypto",   label: "CryptoBot",   sub: "USDT/BTC/TRX",  icon: "🤖", color: "#F7931A" },
+  { id: "sbp",      label: "СБП",         sub: "По номеру тел.", icon: "📱", color: "#1DB954" },
+  { id: "card",     label: "Банк. карта", sub: "Visa / MC",     icon: "💳", color: "#E040FB" },
+];
+
+function WithdrawModal({ onClose, balance }) {
+  const [wMethod, setWMethod] = useState("crypto");
+  const [amount,  setAmount]  = useState("");
+  const [address, setAddress] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // POST /api/wallet/withdraw (CryptoBot)
+  // POST /api/wallet/withdraw/rukassa (СБП / карта)
+  const handleWithdraw = async () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt < 5)    return toast.error("Минимальный вывод $5");
+    if (!address.trim())    return toast.error("Введите реквизиты");
+    if (amt > parseFloat(balance)) return toast.error("Недостаточно средств");
+
+    setLoading(true);
+    try {
+      if (wMethod === "crypto") {
+        const { data } = await axios.post(
+          `${API}/wallet/withdraw`,
+          { amount: amt, address: address.trim(), currency: "USDT" },
+          { headers: authHeaders() }
+        );
+        toast.success(data.message || "Запрос создан");
+      } else {
+        const { data } = await axios.post(
+          `${API}/wallet/withdraw/rukassa`,
+          { amount: amt, account: address.trim(), method: wMethod },
+          { headers: authHeaders() }
+        );
+        toast.success(data.message || "Выплата отправлена!");
+      }
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.error || "Ошибка вывода");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fee      = (parseFloat(amount) || 0) * 0.05;
+  const receive  = Math.max(0, (parseFloat(amount) || 0) - fee);
+  const m        = WITHDRAW_METHODS.find(x => x.id === wMethod);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 500, display: "flex", alignItems: "flex-end" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }} />
+      <div style={{
+        position: "relative", width: "100%", maxWidth: 480, margin: "0 auto",
+        background: T.surface, borderRadius: "24px 24px 0 0",
+        border: `1px solid ${T.border}`, padding: "6px 20px 40px",
+        animation: "slideUp 0.3s cubic-bezier(0.22,1,0.36,1)",
+      }}>
+        <div style={{ width: 40, height: 4, borderRadius: 4, background: T.border, margin: "12px auto 22px" }} />
+        <div style={{ fontSize: 18, fontWeight: 800, color: T.text, marginBottom: 4 }}>Вывод средств</div>
+        <div style={{ fontSize: 13, color: T.muted, marginBottom: 18 }}>Комиссия сервиса: 5%</div>
+
+        {/* Method */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 18, overflowX: "auto" }}>
+          {WITHDRAW_METHODS.map(m => (
+            <button key={m.id} onClick={() => setWMethod(m.id)} style={{
+              flex: 1, padding: "10px 8px", borderRadius: 12,
+              background: wMethod === m.id ? `${m.color}15` : T.s2,
+              border: `1px solid ${wMethod === m.id ? m.color + "50" : T.border}`,
+              cursor: "pointer", textAlign: "center",
+              whiteSpace: "nowrap", transition: "all 0.2s",
+            }}>
+              <div style={{ fontSize: 20, marginBottom: 3 }}>{m.icon}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: wMethod === m.id ? m.color : T.dim }}>{m.label}</div>
+              <div style={{ fontSize: 10, color: T.muted }}>{m.sub}</div>
+            </button>
+          ))}
+        </div>
+
+        <Input
+          label="Сумма вывода"
+          value={amount}
+          onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+          placeholder="Минимум $5"
+          prefix="$"
+          icon="💸"
+        />
+
+        <Input
+          label={wMethod === "crypto" ? "Адрес в CryptoBot" : wMethod === "sbp" ? "Номер телефона (СБП)" : "Номер карты"}
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          placeholder={wMethod === "crypto" ? "@username или адрес" : wMethod === "sbp" ? "+7 999 ..." : "0000 0000 0000 0000"}
+          icon={m?.icon}
+        />
+
+        {/* Fee preview */}
+        {parseFloat(amount) > 0 && (
+          <div style={{
+            background: T.s2, borderRadius: 12, padding: "12px 14px",
+            marginBottom: 16, border: `1px solid ${T.border}`,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontSize: 13, color: T.muted }}>Комиссия (5%)</span>
+              <span style={{ fontSize: 13, color: T.red }}>-${fee.toFixed(2)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: T.dim }}>Вы получите</span>
+              <span style={{ fontSize: 16, fontWeight: 800, color: T.green }}>${receive.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+
+        <button onClick={handleWithdraw} disabled={loading} style={{
+          width: "100%", padding: "14px",
+          background: loading ? `${T.red}40` : T.red,
+          border: "none", borderRadius: 13,
+          fontSize: 15, fontWeight: 800, color: "#fff",
+          cursor: loading ? "not-allowed" : "pointer",
+          fontFamily: "'Onest', system-ui, sans-serif",
+          boxShadow: loading ? "none" : "0 4px 20px rgba(255,77,77,0.4)",
+        }}>
+          {loading ? "⏳ Обработка..." : `${m?.icon} Вывести ${receive > 0 ? `$${receive.toFixed(2)}` : ""}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main WalletPage ──────────────────────────────────────────────────────────
+export default function WalletPage() {
+  const { user, updateUser } = useStore();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const [txs, setTxs]             = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+
+  // GET /api/wallet/transactions
+  useEffect(() => {
+    if (searchParams.get("success")) toast.success("Пополнение прошло успешно! 🎉");
+    axios.get(`${API}/wallet/transactions`, { headers: authHeaders() })
+      .then(({ data }) => setTxs(data.transactions || []))
+      .catch(() => toast.error("Ошибка загрузки транзакций"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const balance = parseFloat(user?.balance || 0);
+  const frozen  = parseFloat(user?.frozenBalance || 0);
+
+  // SVG mini chart (last 7 deposits)
+  const deposits = txs
+    .filter(t => t.type === "deposit" && t.status === "completed")
+    .slice(0, 7)
+    .reverse()
+    .map(t => parseFloat(t.amount));
+  const maxD = Math.max(...deposits, 1);
+  const chartH = 40;
+  const chartW = 200;
+
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800;900&display=swap');
+        @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+        @keyframes fadeUp  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+      `}</style>
+
+      <div style={{ fontFamily: "'Onest', system-ui, sans-serif", padding: "16px 16px 110px", animation: "fadeUp 0.3s ease" }}>
+
+        {/* ── Balance card ── */}
+        <div style={{
+          background: `linear-gradient(135deg, #1a1a00, #2a2400)`,
+          border: `1px solid ${T.yellow}30`,
+          borderRadius: 22, padding: "24px 22px",
+          marginBottom: 16, position: "relative", overflow: "hidden",
+        }}>
+          {/* Glow */}
+          <div style={{
+            position: "absolute", top: -40, right: -40,
+            width: 160, height: 160, borderRadius: "50%",
+            background: T.yellow, opacity: 0.08, filter: "blur(40px)",
+          }} />
+
+          {/* Mini chart */}
+          {deposits.length > 1 && (
+            <div style={{ position: "absolute", bottom: 16, right: 16, opacity: 0.3 }}>
+              <svg width={chartW} height={chartH} viewBox={`0 0 ${chartW} ${chartH}`}>
+                <polyline
+                  fill="none"
+                  stroke={T.yellow}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  points={deposits.map((v, i) =>
+                    `${(i / (deposits.length - 1)) * chartW},${chartH - (v / maxD) * chartH}`
+                  ).join(" ")}
+                />
+              </svg>
+            </div>
+          )}
+
+          <div style={{ fontSize: 13, color: `${T.yellow}90`, fontWeight: 600, marginBottom: 10, letterSpacing: "0.06em" }}>
+            💳 ВАШ БАЛАНС
+          </div>
+          <div style={{ fontSize: 42, fontWeight: 900, color: T.yellow, letterSpacing: "-1px", lineHeight: 1 }}>
+            ${balance.toFixed(2)}
+          </div>
+          {frozen > 0 && (
+            <div style={{ fontSize: 13, color: `${T.yellow}70`, marginTop: 6 }}>
+              🔒 В заморозке: ${frozen.toFixed(2)}
+            </div>
+          )}
+        </div>
+
+        {/* ── Stats row ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+          <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, color: T.muted, marginBottom: 4 }}>Всего пополнено</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: T.green }}>
+              +${parseFloat(user?.totalDeposited || 0).toFixed(2)}
+            </div>
+          </div>
+          <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, color: T.muted, marginBottom: 4 }}>Всего выведено</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: T.red }}>
+              -${parseFloat(user?.totalWithdrawn || 0).toFixed(2)}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Action buttons ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
+          <button onClick={() => setShowDeposit(true)} style={{
+            padding: "14px", borderRadius: 14,
+            background: T.yellow, border: "none",
+            fontSize: 15, fontWeight: 800, color: "#000",
+            cursor: "pointer",
+            boxShadow: `0 4px 20px ${T.yellow}45`,
+            fontFamily: "'Onest', system-ui, sans-serif",
+          }}>
+            ⬇️ Пополнить
+          </button>
+          <button onClick={() => setShowWithdraw(true)} style={{
+            padding: "14px", borderRadius: 14,
+            background: T.s2, border: `1px solid ${T.border}`,
+            fontSize: 15, fontWeight: 700, color: T.dim,
+            cursor: "pointer",
+            fontFamily: "'Onest', system-ui, sans-serif",
+          }}>
+            ⬆️ Вывести
+          </button>
+        </div>
+
+        {/* ── Transactions ── */}
+        <div style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 14 }}>
+          История транзакций
+        </div>
+
+        {loading && (
+          <div style={{ textAlign: "center", paddingTop: 30, color: T.muted }}>
+            <div style={{ fontSize: 24 }}>⏳</div>
+          </div>
+        )}
+
+        {!loading && txs.length === 0 && (
+          <div style={{ textAlign: "center", paddingTop: 40, color: T.muted }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>📭</div>
+            <div style={{ fontSize: 14 }}>Транзакций пока нет</div>
+          </div>
+        )}
+
+        {txs.map((tx, i) => {
+          const meta   = txMeta(tx.type);
+          const status = txStatusBadge(tx.status);
+          const isPlus = ["deposit", "sale", "refund"].includes(tx.type);
+
+          return (
+            <div key={tx._id || i} style={{
+              background: T.surface, border: `1px solid ${T.border}`,
+              borderRadius: 16, padding: "14px 16px", marginBottom: 10,
+              display: "flex", alignItems: "center", gap: 12,
+              animation: `fadeUp 0.3s ${i * 0.04}s ease both`,
+            }}>
+              {/* Icon */}
+              <div style={{
+                width: 44, height: 44, borderRadius: 13, flexShrink: 0,
+                background: `${meta.color}12`,
+                border: `1px solid ${meta.color}25`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 20,
+              }}>{meta.icon}</div>
+
+              {/* Info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 3 }}>
+                  {meta.label}
+                </div>
+                <div style={{ fontSize: 11, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {tx.description || ""}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                  <span style={{ fontSize: 10, color: T.muted }}>
+                    {new Date(tx.createdAt || tx.created_at * 1000).toLocaleDateString("ru")}
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: status.color }}>
+                    {status.label}
+                  </span>
+                </div>
+              </div>
+
+              {/* Amount */}
+              <div style={{
+                fontSize: 16, fontWeight: 800,
+                color: isPlus ? T.green : T.red,
+                flexShrink: 0,
+              }}>
+                {isPlus ? "+" : "-"}${parseFloat(tx.amount).toFixed(2)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {showDeposit  && <DepositModal  onClose={() => setShowDeposit(false)} />}
+      {showWithdraw && <WithdrawModal onClose={() => setShowWithdraw(false)} balance={balance} />}
+    </>
+  );
 }
