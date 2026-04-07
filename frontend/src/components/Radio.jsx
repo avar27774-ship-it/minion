@@ -80,7 +80,7 @@ export default function Radio({ triggerOpen, onTriggerHandled }) {
         <div style={{
           position:'fixed',
           bottom:'calc(var(--bot-nav) + env(safe-area-inset-bottom) + 8px)',
-          left:12, right:12, zIndex:89,
+          left:12, right:12, zIndex:88,
         }}>
           <div style={{
             background:'rgba(18,18,28,0.97)',
