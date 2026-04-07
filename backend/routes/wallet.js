@@ -162,7 +162,7 @@ app.get('/:file([a-z0-9_\-]+\.html)', (req, res) => {
 });
 
 // ── API Request Logger (должен быть ДО роутов, иначе не срабатывает) ─────────
-const { apiLogMiddleware } = require('./utils/securityLog');
+const { apiLogMiddleware } = require('../utils/securityLog');
 app.use(apiLogMiddleware);
 
 // ── Routes ─────────────────────────────────────────────────────────────────────
