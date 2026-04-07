@@ -231,6 +231,92 @@ async function notifySiteDown(reason) {
 
 // ── Обработка входящего апдейта ───────────────────────────────────────────────
 async function handleUpdate(update) {
+  // ── Обработка контакта (номер телефона) ──────────────────────────────────
+  if (update.message?.contact) {
+    const msg     = update.message;
+    const chatId  = msg.chat.id;
+    const contact = msg.contact;
+    const tgId    = String(chatId);
+
+    // Убедиться что пользователь отправляет свой номер, а не чужой
+    if (String(contact.user_id) !== tgId) {
+      await sendMessage(chatId,
+        '⚠️ Пожалуйста, отправьте <b>свой</b> номер телефона, а не чужой.',
+        { reply_markup: JSON.stringify({ remove_keyboard: true }) }
+      );
+      return;
+    }
+
+    const phone = contact.phone_number.replace(/\D/g, '');
+    const normalizedPhone = '+' + phone;
+
+    // Проверить — не занят ли этот номер другим аккаунтом
+    const existingByPhone = await queryOne(
+      'SELECT id, username FROM users WHERE phone = $1 AND telegram_id != $2',
+      [normalizedPhone, tgId]
+    ).catch(() => null);
+
+    if (existingByPhone) {
+      await sendMessage(chatId,
+        '❌ <b>Этот номер телефона уже привязан к другому аккаунту.</b>\n\n' +
+        'Каждый номер может быть привязан только к одному аккаунту.\n\n' +
+        'Если это ваш номер — обратитесь в поддержку.',
+        { reply_markup: JSON.stringify({ remove_keyboard: true }) }
+      );
+      return;
+    }
+
+    // Найти пользователя по telegram_id
+    const user = await queryOne(
+      'SELECT * FROM users WHERE telegram_id = $1',
+      [tgId]
+    ).catch(() => null);
+
+    if (!user) {
+      await sendMessage(chatId,
+        '⚠️ Ваш аккаунт не найден. Пожалуйста, сначала зарегистрируйтесь на сайте.',
+        { reply_markup: JSON.stringify({ remove_keyboard: true }) }
+      );
+      return;
+    }
+
+    // Сохранить номер и снять бан за телефон
+    await run(
+      `UPDATE users SET 
+        phone = $1, 
+        phone_verified = 1,
+        is_banned = CASE WHEN ban_reason = 'phone_required' THEN 0 ELSE is_banned END,
+        banned_until = CASE WHEN ban_reason = 'phone_required' THEN NULL ELSE banned_until END,
+        ban_reason = CASE WHEN ban_reason = 'phone_required' THEN NULL ELSE ban_reason END
+       WHERE id = $2`,
+      [normalizedPhone, user.id]
+    ).catch(() => {});
+
+    await sendMessage(chatId,
+      '✅ <b>Номер телефона подтверждён!</b>\n\n' +
+      '📱 ' + normalizedPhone + '\n\n' +
+      'Ваш аккаунт разблокирован. Можете пользоваться маркетплейсом.',
+      {
+        reply_markup: JSON.stringify({
+          remove_keyboard: true,
+          inline_keyboard: [
+            [{ text: '🛍 Открыть маркетплейс', web_app: { url: process.env.FRONTEND_URL || process.env.BACKEND_URL || '' } }]
+          ]
+        })
+      }
+    );
+
+    // Уведомить админа
+    if (process.env.REPORT_CHAT_ID) {
+      sendMessage(process.env.REPORT_CHAT_ID,
+        '📱 <b>Номер подтверждён</b>\n' +
+        '👤 @' + (user.username || 'без_логина') + '\n' +
+        '📞 ' + normalizedPhone
+      ).catch(() => {});
+    }
+    return;
+  }
+
   const msg = update.message;
   if (!msg || !msg.text) return;
 
@@ -244,6 +330,32 @@ async function handleUpdate(update) {
 
   // ── /start ────────────────────────────────────────────────────────────────
   if (text.startsWith('/start')) {
+    // Проверить — есть ли у этого tg_id аккаунт без телефона
+    const tgId   = String(chatId);
+    const existingUser = await queryOne(
+      'SELECT id, username, phone_verified, is_banned, ban_reason FROM users WHERE telegram_id = $1',
+      [tgId]
+    ).catch(() => null);
+
+    if (existingUser && !existingUser.phone_verified) {
+      // Нужна верификация телефона
+      await sendMessage(chatId,
+        '📱 <b>Требуется подтверждение номера телефона</b>\n\n' +
+        'Для использования маркетплейса необходимо привязать номер телефона.\n\n' +
+        '• Один номер = один аккаунт\n' +
+        '• Это защищает маркетплейс от мошенников\n\n' +
+        'Нажмите кнопку ниже чтобы поделиться номером:',
+        {
+          reply_markup: JSON.stringify({
+            keyboard: [[{ text: '📱 Поделиться номером', request_contact: true }]],
+            resize_keyboard: true,
+            one_time_keyboard: true
+          })
+        }
+      );
+      return;
+    }
+
     const adminCmds = isAdmin(chatId)
       ? '\n\n🔧 <b>Админ:</b>\n• /admin — открыть админ панель\n• /report — отчёт\n• /monitor — проверка сайта\n• /top — топ продавцов и товаров\n• /radar — подозрительные юзеры\n• /dead — мёртвые товары\n• /vibe — настроение рынка AI\n• /predict — прогноз категорий AI\n• /freeze [логин] — заморозить\n• /msg [логин] [текст] — написать\n• /promo [код] [%] — промокод\n• /ai_on /ai_off /ai_status\n\n📡 <b>Канал:</b>\n• /channel — управление каналом\n• /post [текст] — опубликовать\n• /postpin [текст] — пост + закрепить\n• /announce [текст] — анонс\n• /newproduct — анонс товара\n• /autopromo — AI-промо\n• /channelstats — статистика'
       : '';
