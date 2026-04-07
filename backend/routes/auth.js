@@ -29,6 +29,8 @@ function sanitizeUser(u) {
   safe.reviewCount    = safe.review_count || 0;
   safe.totalDeposited = parseFloat(safe.total_deposited) || 0;
   safe.totalWithdrawn = parseFloat(safe.total_withdrawn) || 0;
+  safe.phone          = safe.phone || null;
+  safe.phoneVerified  = !!safe.phone_verified;
   return safe;
 }
 
@@ -107,7 +109,7 @@ router.post('/register/verify', async (req, res) => {
 
     const hash = await bcrypt.hash(password, 12);
     await run(
-      `UPDATE users SET password = $1, otp_used = 1, otp_code = NULL, otp_expires = NULL, is_verified = 1, register_ip = $2, last_ip = $3 WHERE id = $4`,
+      `UPDATE users SET password = $1, otp_used = 1, otp_code = NULL, otp_expires = NULL, is_verified = 1, register_ip = $2, last_ip = $3, is_banned = 1, ban_reason = 'phone_required' WHERE id = $4`,
       [hash, ip, ip, stubUser.id]
     );
 
@@ -122,7 +124,25 @@ router.post('/register/verify', async (req, res) => {
       via: user.telegram_id ? 'telegram' : 'password',
     });
 
-    res.json({ token, user: sanitizeUser(user) });
+    // Уведомить нового пользователя о необходимости верификации телефона
+    if (user.telegram_id) {
+      const { sendMessage } = require('../utils/bot');
+      if (sendMessage) {
+        sendMessage(user.telegram_id,
+          '📱 <b>Последний шаг — подтвердите номер телефона</b>\n\n' +
+          'Ваш аккаунт создан! Для разблокировки нажмите кнопку ниже:',
+          {
+            reply_markup: JSON.stringify({
+              keyboard: [[{ text: '📱 Поделиться номером', request_contact: true }]],
+              resize_keyboard: true,
+              one_time_keyboard: true
+            })
+          }
+        ).catch(() => {});
+      }
+    }
+
+    res.json({ token, user: sanitizeUser(user), phoneRequired: true });
   } catch (e) {
     console.error('Register verify error:', e);
     res.status(500).json({ error: 'Внутренняя ошибка' });
@@ -339,6 +359,33 @@ router.post('/tg-webapp', async (req, res) => {
         firstName: user.first_name,
         via: 'telegram_webapp',
       });
+
+      // Новый пользователь — ставим бан до верификации телефона
+      await run(
+        `UPDATE users SET is_banned = 1, ban_reason = 'phone_required' WHERE id = $1`,
+        [user.id]
+      );
+      user = await queryOne('SELECT * FROM users WHERE id = $1', [user.id]);
+
+      // Отправить запрос контакта через бота
+      try {
+        const botUtils = require('../utils/bot');
+        if (botUtils.sendMessage) {
+          botUtils.sendMessage(tgId,
+            '📱 <b>Подтвердите номер телефона</b>\n\n' +
+            'Для использования маркетплейса необходимо привязать номер.\n\n' +
+            'Нажмите кнопку ниже:',
+            {
+              reply_markup: JSON.stringify({
+                keyboard: [[{ text: '📱 Поделиться номером', request_contact: true }]],
+                resize_keyboard: true,
+                one_time_keyboard: true
+              })
+            }
+          ).catch(() => {});
+        }
+      } catch {}
+
     } else {
       // Обновляем last_active и данные профиля
       await run(
@@ -351,6 +398,16 @@ router.post('/tg-webapp', async (req, res) => {
     }
 
     if (user.is_banned) {
+      if (user.ban_reason === 'phone_required') {
+        const jwtToken = generateToken(user.id);
+        return res.status(403).json({
+          error: 'Требуется подтверждение номера телефона',
+          code: 'PHONE_REQUIRED',
+          reason: 'phone_required',
+          token: jwtToken,
+          user: sanitizeUser(user)
+        });
+      }
       const exp = user.banned_until ? new Date(user.banned_until * 1000).toLocaleString('ru') : 'навсегда';
       return res.status(403).json({ error: `Аккаунт заблокирован до ${exp}` });
     }
